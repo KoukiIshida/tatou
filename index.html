@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>プレッシャー多答クイズ</title>
+<title>ハウメニーアンサー</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
@@ -278,7 +278,7 @@ textarea{width:100%; font-family:inherit;}
 
 <div id="page-admin" class="page">
   <div class="admin-wrap">
-    <h1>プレッシャー多答クイズ 管理画面</h1>
+    <h1>ハウメニーアンサー 管理画面</h1>
     <section class="card">
       <h2>基本設定</h2>
       <label>タイトル<br><input id="f-title" type="text" style="width:100%"></label>
@@ -428,14 +428,14 @@ async function idbGet(){const db=await openDb();return new Promise((res,rej)=>{c
 async function idbSet(data){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,DATA_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
 
 /* ---------- data model ---------- */
-function defaultAppData(){return { title:'プレッシャー多答クイズ', ruleSlides:[{img:null, groups:['']}], questions:[] };}
+function defaultAppData(){return { title:'ハウメニーアンサー', ruleSlides:[{img:null, groups:['']}], questions:[] };}
 function makeQ(mode){return {id:uid('q'), genre:'', mode:mode==='count'?'count':'time', text:'', imgs:[], answersText:'', answerCount:'', include:true, done:false};}
 function mergeLoadedAppData(loaded){
   const d=defaultAppData();
   const m=Object.assign({}, d, loaded||{});
   // 旧データ（形式がゲーム全体で1つだった頃）は、その形式を各問題に引き継ぐ
   const legacyMode = m.mode==='count' ? 'count' : 'time';
-  if(m.title==='多答クイズ') m.title=d.title;   // 旧タイトルのままなら新タイトルへ
+  if(m.title==='多答クイズ' || m.title==='プレッシャー多答クイズ') m.title=d.title;   // 旧タイトルのままなら新タイトルへ
   delete m.mode;
   if(!Array.isArray(m.ruleSlides) || !m.ruleSlides.length) m.ruleSlides=d.ruleSlides;
   m.ruleSlides.forEach(s=>{ if(!Array.isArray(s.groups)||!s.groups.length) s.groups=['']; });
@@ -503,7 +503,7 @@ document.addEventListener('DOMContentLoaded', init);
 async function init(){
   const loaded=await idbGet();
   if(loaded){ appData=mergeLoadedAppData(loaded); }
-  document.title = appData.title || 'プレッシャー多答クイズ';
+  document.title = appData.title || 'ハウメニーアンサー';
   if(MODE==='admin'){ document.getElementById('page-admin').classList.add('active'); initAdmin(); }
   else if(MODE==='participant'){ document.getElementById('page-participant').classList.add('active'); initParticipant(); }
   else { document.getElementById('page-host').classList.add('active'); initHost(); }
@@ -654,7 +654,7 @@ async function importCsvFile(e){
 
 function buildExportText(){
   const qs=includedQs();
-  const lines=[`${appData.title||'プレッシャー多答クイズ'}　出題一覧`, `全${qs.length}問（${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問／${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）`, ''];
+  const lines=[`${appData.title||'ハウメニーアンサー'}　出題一覧`, `全${qs.length}問（${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問／${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）`, ''];
   qs.forEach((q,i)=>{
     const answers=parseAnswers(q.answersText);
     lines.push(`【${i+1}】ジャンル：${q.genre||'(未入力)'}（正解数：${q.answerCount===''?'未入力':q.answerCount}）`);
@@ -1380,7 +1380,7 @@ function renderHost(){
   }catch(e){ console.error(e); body=`<div class="host-body"><div class="host-msg">表示エラー：${escapeHtml(e.message)}</div></div>`; }
   let rl=(['lottery','genre','predict','question','reveal_answers','reveal_predictions'].includes(gameState.phase) && roundNo()) ? `<span class="host-round">${roundLabel()}</span>` : '';
   if(gameState.testMode && gameState.phase!=='lobby') rl+='<span class="test-badge">🧪 動作確認モード</span>';
-  root.innerHTML = `<div class="host-topbar"><span><span class="host-title">${escapeHtml(appData.title||'プレッシャー多答クイズ')}</span>${rl}</span>
+  root.innerHTML = `<div class="host-topbar"><span><span class="host-title">${escapeHtml(appData.title||'ハウメニーアンサー')}</span>${rl}</span>
     <div class="host-topbar-actions">
       <button data-action="open-admin" class="btn-mini">⚙ 管理画面</button>
       <button data-action="restart-all" class="btn-mini">↺ 最初から</button>
@@ -1746,7 +1746,7 @@ function myPredLine(pl){ return pl.myPrediction!=null ? `<p>あなたの予想�
 function renderParticipant(){
   const root=document.getElementById('participant-root');
   const pl=lastPayload; if(!pl) return;
-  document.title=pl.title||'プレッシャー多答クイズ';
+  document.title=pl.title||'ハウメニーアンサー';
   const see='ホストの画面をご覧ください';
   switch(pl.phase){
     case 'lobby': root.innerHTML=waitScreen(escapeHtml(pl.title||''), `${escapeHtml(pl.name)}さん、開始までお待ちください。`); break;
