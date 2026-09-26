@@ -1,1 +1,1573 @@
 
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>多答クイズ</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{
+  --good:#2e7d32; --bad:#c62828; --warn:#e08b1e; --gold:#ffc83d; --near:#3a8df0;
+  --accent:#3a6df0; --bg-host:#161a24; --panel-host:#232838;
+}
+*{box-sizing:border-box;}
+body{font-family:"Hiragino Kaku Gothic ProN","Meiryo",sans-serif; margin:0; padding:0;}
+.page{display:none;}
+.page.active{display:block;}
+button{cursor:pointer; font-family:inherit;}
+.muted{color:#888;}
+img{max-width:100%;}
+
+/* ---- Admin ---- */
+#page-admin.active{background:#f2f3f7; min-height:100vh; padding:16px;}
+.admin-wrap{max-width:1100px; margin:0 auto;}
+.card{background:#fff; border-radius:10px; padding:16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.1);}
+.card h2{margin-top:0;}
+.row{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0;}
+input[type=text], input[type=number], textarea, select{padding:8px; border:1px solid #ccc; border-radius:6px; font-size:14px;}
+textarea{width:100%; font-family:inherit;}
+.btn-mini{padding:6px 10px; border:1px solid #999; background:#fff; border-radius:6px; font-size:13px; color:#333;}
+.btn-mini:disabled{opacity:.45; cursor:not-allowed;}
+.btn-primary{padding:12px 22px; border:none; background:var(--accent); color:#fff; border-radius:8px; font-size:16px; font-weight:bold;}
+.btn-primary:disabled{background:#777; color:#ccc; cursor:not-allowed;}
+.btn-danger{padding:12px 22px; border:none; background:var(--bad); color:#fff; border-radius:8px; font-size:16px; font-weight:bold;}
+.sticky-actions{position:sticky; bottom:0; background:#f2f3f7; padding:10px 0;}
+.rich-toolbar button{margin-right:4px;}
+.rule-edit{border:1px solid #ccc; border-radius:6px; min-height:80px; padding:10px; background:#fff; text-align:left;}
+.rule-slide-card{border:1px solid #ddd; border-radius:8px; padding:10px; margin-bottom:10px; background:#fafbfe;}
+.rule-slide-head{display:flex; align-items:center; gap:8px; margin-bottom:8px;}
+.rule-group-block{margin-bottom:10px;}
+.thumb{max-width:160px; max-height:120px; display:block; border-radius:6px; cursor:zoom-in;}
+.thumb-wrap{position:relative; display:inline-block;}
+.thumb-wrap .f-img-del{position:absolute; top:-6px; right:-6px; border-radius:50%; padding:1px 6px; font-size:11px; line-height:1.4; background:#fff;}
+.q-card{border:1px solid #ddd; border-radius:8px; margin-bottom:8px; background:#fafbfe;}
+.q-card.has-error{border-color:#e57373; background:#fff6f6;}
+.q-head{display:flex; align-items:center; gap:8px; padding:8px 10px; flex-wrap:wrap;}
+.drag-handle{cursor:grab; color:#999; font-size:18px;}
+.q-idx{font-weight:bold; color:#555;}
+.q-genre{font-weight:bold; color:#222;}
+.q-count{font-size:12px; background:#e7ecfb; color:#2f4ea8; border-radius:10px; padding:2px 8px;}
+.q-title-preview{flex:1; color:#666; min-width:80px; font-size:13px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;}
+.q-err-badge{font-size:12px; background:var(--bad); color:#fff; border-radius:10px; padding:2px 8px;}
+.chk{font-size:13px; display:flex; align-items:center; gap:3px; white-space:nowrap;}
+.q-detail{padding:10px; border-top:1px dashed #ccc; display:flex; flex-direction:column; gap:8px;}
+.q-detail label{font-size:13px; color:#444;}
+.answers-block{background:#eef1fa; border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px;}
+.q-status{font-size:13px;}
+.q-status .ok{color:var(--good); font-weight:bold;}
+.q-status .ng{color:var(--bad); font-weight:bold;}
+.confirm-list{padding-left:22px;}
+.confirm-list li{margin:4px 0;}
+.confirm-err{color:var(--bad); font-size:13px;}
+.mode-radio{display:flex; gap:18px; flex-wrap:wrap;}
+.mode-radio label{display:flex; align-items:center; gap:6px; font-size:15px; background:#f5f7fd; border:1px solid #d6dcef; padding:8px 12px; border-radius:8px;}
+
+/* ---- modal ---- */
+.text-modal{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:997; padding:16px;}
+.text-modal.active{display:flex;}
+.text-modal-box{background:#fff; border-radius:10px; padding:16px; width:min(760px,100%); max-height:90vh; display:flex; flex-direction:column; gap:10px;}
+.text-modal-box textarea{flex:1; min-height:50vh; font-size:13px; line-height:1.6;}
+
+/* ---- Save overlay ---- */
+.save-overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:999;}
+.save-overlay.active{display:flex;}
+.save-box{background:#fff; padding:24px 30px; border-radius:10px; text-align:center; min-width:240px;}
+.spinner{width:36px; height:36px; border:4px solid #ddd; border-top-color:var(--accent); border-radius:50%; margin:0 auto 10px; animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.save-bar-outer{background:#eee; border-radius:6px; height:10px; margin-top:10px; overflow:hidden;}
+.save-bar-inner{background:var(--accent); height:100%; width:0%; transition:width .2s;}
+
+/* ---- Image modal ---- */
+.img-modal{position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:998;}
+.img-modal.active{display:flex;}
+.img-modal img{max-width:92vw; max-height:92vh;}
+
+/* ---- Host ---- */
+#page-host.active{background:var(--bg-host); color:#fff; min-height:100vh;}
+.host-topbar{display:flex; justify-content:space-between; align-items:center; padding:10px 18px; background:#10131b; gap:10px; flex-wrap:wrap;}
+.host-topbar-actions{display:flex; gap:8px; flex-wrap:wrap;}
+.host-title{font-weight:bold; font-size:18px;}
+.host-round{font-size:14px; color:#ffd166; margin-left:10px;}
+.host-body{padding:24px; text-align:center; max-width:1100px; margin:0 auto;}
+.host-body h2{font-size:30px; margin:10px 0 16px;}
+.rule-display{text-align:left; max-width:1100px; margin:20px auto 28px; line-height:1.7; font-size:22px;}
+.rule-red{color:#c0392b; background:#f0f0f0; border:1px solid #ddd; padding:1px 7px; border-radius:6px; -webkit-box-decoration-break:clone; box-decoration-break:clone;}
+.rule-normal{color:#222;}
+.rule-display .rule-red{color:#e5342b; background:#fff; border:none;}
+.rule-display .rule-normal{color:#fff;}
+.rule-img{border-radius:8px; margin-bottom:10px; cursor:zoom-in; max-height:50vh;}
+#qrcode-box{display:inline-block; background:#fff; padding:12px; border-radius:10px;}
+.join-url{font-size:12px; color:#9aa; word-break:break-all;}
+.player-chips{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:14px 0;}
+.chip{background:#2b3245; padding:6px 12px; border-radius:20px; font-size:15px; display:inline-flex; align-items:center; gap:6px;}
+.chip-off{opacity:.4;}
+.chip-done{background:var(--good);}
+.chip-answerer{background:#7a4dd8;}
+.chip-x{background:none; border:none; color:#f99; font-size:14px; padding:0 2px;}
+.host-actions{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:18px;}
+.host-btn{padding:12px 22px; border-radius:8px; font-size:16px; font-weight:bold; border:1px solid #556; background:#2b3245; color:#fff;}
+.host-btn:disabled{opacity:.4; cursor:not-allowed;}
+.host-msg{background:#3a2a14; border:1px solid #a86d1b; color:#ffd9a0; padding:12px 16px; border-radius:8px; margin:14px auto; max-width:760px; text-align:left;}
+.info-line{font-size:20px; color:#cfd6ea; margin:6px 0;}
+.genre-title{font-size:40px; font-weight:bold; color:#ffd166; margin:8px 0;}
+.count-badge{display:inline-block; background:#ffd166; color:#222; font-weight:bold; font-size:22px; padding:4px 16px; border-radius:20px;}
+.mode-badge{display:inline-block; background:#3a6df0; color:#fff; font-size:18px; padding:4px 14px; border-radius:20px; margin-left:8px;}
+.answerer-line{font-size:24px; margin:8px 0;}
+.answerer-line strong{color:#c9a8ff; font-size:30px;}
+
+/* genre board */
+.genre-board{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; margin-top:18px;}
+.genre-card{position:relative; background:linear-gradient(160deg,#2f3a5c,#232838); border:2px solid #4a5a8a; border-radius:12px; padding:22px 12px; color:#fff; font-size:24px; font-weight:bold; transition:transform .1s;}
+.genre-card:hover:not(:disabled){transform:translateY(-3px); border-color:#ffd166;}
+.genre-card .gc-count{display:block; margin-top:8px; font-size:17px; color:#ffd166; font-weight:normal;}
+.genre-card:disabled{background:#2a2c33; border-color:#3a3d47; color:#666; cursor:not-allowed;}
+.genre-card:disabled .gc-count{color:#555;}
+.genre-card .gc-used{position:absolute; top:8px; right:8px; font-size:12px; background:#555; color:#ddd; padding:2px 8px; border-radius:10px; font-weight:normal;}
+
+/* question */
+.q-text-big{font-size:30px; margin:16px auto; white-space:pre-wrap; text-align:left; max-width:1000px; line-height:1.6;}
+.prompt-imgs{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin:10px 0;}
+.q-img{max-height:36vh; border-radius:8px; cursor:zoom-in;}
+.timer-wrap{margin:18px auto; max-width:620px;}
+.big-timer{font-size:120px; font-weight:bold; font-variant-numeric:tabular-nums; line-height:1; letter-spacing:2px;}
+.big-timer .unit{font-size:40px; margin-left:6px;}
+.big-timer.timeup{color:#ff6b6b;}
+.timer-bar-outer{height:14px; background:#2b3245; border-radius:8px; overflow:hidden; margin-top:12px;}
+.timer-bar-inner{height:100%; background:linear-gradient(90deg,#3a6df0,#ffd166); width:0%;}
+.timer-label{color:#9aa; font-size:16px; margin-bottom:6px;}
+.timeup-label{color:#ff6b6b; font-size:28px; font-weight:bold; margin-top:8px;}
+.result-entry{background:#1d2130; border:1px solid #3a4260; border-radius:10px; padding:14px; margin:22px auto 0; max-width:620px;}
+.result-entry input[type=text]{font-size:22px; width:120px; text-align:center; padding:8px;}
+.result-entry .re-row{display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap; font-size:18px;}
+.result-entry .re-err{color:#ff8a80; font-size:14px; min-height:20px; margin-top:6px;}
+.host-note{color:#8a93ad; font-size:13px; margin-top:6px;}
+
+/* reveal */
+.answer-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:8px; margin:16px 0; text-align:left;}
+.answer-chip{background:#232838; border:1px solid #39415c; border-radius:8px; padding:8px 12px; font-size:20px; display:flex; gap:8px; align-items:baseline;}
+.answer-chip .an{color:#8a93ad; font-size:13px; min-width:22px;}
+.result-big{font-size:44px; font-weight:bold; color:#ffd166; margin:14px 0;}
+.pred-list{max-width:760px; margin:16px auto; display:flex; flex-direction:column; gap:8px;}
+.pred-row{display:flex; align-items:center; gap:14px; background:#232838; padding:12px 18px; border-radius:10px; font-size:22px; animation:popIn .35s ease both;}
+.pred-row .pn{flex:1; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.pred-row .pv{flex:0 0 auto; min-width:150px; text-align:right; font-variant-numeric:tabular-nums;}
+.pred-row .pd{flex:0 0 90px; text-align:right; color:#8a93ad; font-size:15px;}
+.pred-row .pp{flex:0 0 200px; text-align:right; font-weight:bold; white-space:nowrap;}
+.pred-row.pita{background:linear-gradient(90deg,#6b4d00,#3a2c05); outline:2px solid var(--gold);}
+.pred-row.pita .pp{color:var(--gold);}
+.pred-row.near{background:linear-gradient(90deg,#123a6e,#1a2742); outline:2px solid var(--near);}
+.pred-row.near .pp{color:#8fc2ff;}
+.pred-row.none{opacity:.6;}
+@keyframes popIn{from{opacity:0; transform:scale(.9);} to{opacity:1; transform:scale(1);}}
+
+/* final */
+.final-spot{margin:20px auto; padding:26px; border-radius:16px; max-width:760px; background:radial-gradient(circle at 50% 0,#4a3a10,#232838 70%); border:2px solid var(--gold); animation:popIn .5s ease both;}
+.final-spot .fs-rank{font-size:40px; color:var(--gold); font-weight:bold;}
+.final-spot .fs-names{font-size:52px; font-weight:bold; margin:10px 0;}
+.final-spot .fs-pt{font-size:26px; color:#ffe7a3;}
+.rank-table{max-width:760px; margin:18px auto; display:flex; flex-direction:column; gap:6px;}
+.rank-row{display:flex; align-items:center; gap:14px; background:#232838; padding:10px 18px; border-radius:8px; font-size:22px; animation:popIn .35s ease both;}
+.rank-row .rr{flex:0 0 80px; font-weight:bold; text-align:left;}
+.rank-row .rn{flex:1; text-align:left;}
+.rank-row .rt{flex:0 0 100px; text-align:right; font-variant-numeric:tabular-nums;}
+.rank-row.r1{outline:2px solid var(--gold);} .rank-row.r1 .rr{color:var(--gold);}
+.rank-row.r2 .rr{color:#dfe6f2;} .rank-row.r3 .rr{color:#e0a36b;}
+
+/* ---- 多答みくじ ---- */
+.omi-stage{position:relative; width:340px; height:560px; margin:0 auto;}
+.omi-tilt{position:absolute; left:50%; top:70px; width:160px; height:300px; margin-left:-80px; perspective:1100px; z-index:2; transform-origin:50% 50%; transition:opacity .6s, top .6s;}
+.omi-prism{position:absolute; inset:0; transform-style:preserve-3d; animation:omiSpin 7s linear infinite;}
+@keyframes omiSpin{from{transform:rotateX(-14deg) rotateY(0deg);} to{transform:rotateX(-14deg) rotateY(360deg);}}
+.omi-face{position:absolute; left:50%; top:0; width:88px; height:300px; margin-left:-44px; backface-visibility:hidden;
+  background:linear-gradient(90deg,#8e0c1d 0%,#c8142c 35%,#e02a40 50%,#c8142c 65%,#8e0c1d 100%);
+  border-top:10px solid #d4a32c; border-bottom:10px solid #d4a32c; box-shadow:inset 0 0 0 2px rgba(255,215,120,.35);
+  display:flex; align-items:center; justify-content:center;}
+.omi-face span{writing-mode:vertical-rl; font-size:34px; font-weight:bold; color:#ffe08a; letter-spacing:6px; text-shadow:0 2px 0 #5a0610; font-family:"Hiragino Mincho ProN","Yu Mincho","MS Mincho",serif;}
+.omi-cap{position:absolute; left:50%; top:50%; width:176px; height:152px; margin-left:-88px; margin-top:-76px;
+  clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); background:#b8891f;}
+.omi-cap.top{transform:rotateX(90deg) translateZ(150px); background:radial-gradient(circle,#1a0d02 0 13px,#caa03a 14px,#9c7418 100%);}
+.omi-cap.bottom{transform:rotateX(-90deg) translateZ(150px); background:#9c7418;}
+.omi-stick{position:absolute; left:50%; top:110px; width:40px; height:250px; margin-left:-20px; z-index:1;
+  background:linear-gradient(90deg,#d8b98a,#f3e2c2 45%,#e6cfa6 60%,#c9a877); border-radius:4px; box-shadow:0 3px 8px rgba(0,0,0,.4);
+  display:flex; align-items:center; justify-content:center; transition:transform .55s cubic-bezier(.55,0,.8,.4);}
+.omi-stick::after{content:''; position:absolute; left:0; right:0; bottom:0; height:26px; background:#c8142c; border-radius:0 0 4px 4px;}
+.omi-stick .omi-name{writing-mode:vertical-rl; font-weight:bold; color:#2a1606; opacity:0; transition:opacity .5s .4s; white-space:nowrap; margin-bottom:22px;
+  font-family:"Hiragino Mincho ProN","Yu Mincho","MS Mincho",serif;}
+.omi-stage.st-shake .omi-tilt{animation:omiShake 1.3s ease-in-out;}
+@keyframes omiShake{0%{transform:rotate(0)}15%{transform:rotate(-16deg)}30%{transform:rotate(16deg)}45%{transform:rotate(-16deg)}60%{transform:rotate(16deg)}75%{transform:rotate(-10deg)}100%{transform:rotate(0)}}
+.omi-stage.st-flip .omi-tilt{animation:omiFlip .7s ease-in-out forwards;}
+@keyframes omiFlip{from{transform:rotate(0)} to{transform:rotate(180deg)}}
+.omi-stage.st-inv .omi-tilt{transform:rotate(180deg); animation:omiShakeInv 1.1s ease-in-out;}
+@keyframes omiShakeInv{0%{transform:rotate(180deg)}20%{transform:rotate(168deg)}40%{transform:rotate(192deg)}60%{transform:rotate(170deg)}80%{transform:rotate(188deg)}100%{transform:rotate(180deg)}}
+.omi-stage.st-drop .omi-tilt{transform:rotate(180deg);}
+.omi-stage.st-drop .omi-stick{transform:translateY(190px);}
+.omi-stage.st-reveal .omi-tilt{transform:rotate(180deg); opacity:0; top:-40px;}
+.omi-stage.st-reveal .omi-stick{transform:translateY(40px) scale(1.75); transition:transform .8s cubic-bezier(.2,.8,.3,1.2);}
+.omi-stage.st-reveal .omi-name{opacity:1;}
+.omi-stage.st-final .omi-tilt{transform:rotate(180deg); opacity:0; top:-40px; transition:none;}
+.omi-stage.st-final .omi-stick{transform:translateY(40px) scale(1.75); transition:none;}
+.omi-stage.st-final .omi-name{opacity:1; transition:none;}
+.omi-result{font-size:40px; font-weight:bold; min-height:56px; margin-top:4px;}
+.omi-result strong{color:#c9a8ff; font-size:52px;}
+.omi-result.show{animation:popIn .5s ease both;}
+
+/* ---- Participant ---- */
+#page-participant.active{background:#f5f6fa; min-height:100vh; font-size:15px; color:#222;}
+.p-center{padding:40px 20px; text-align:center;}
+.p-center input{width:80%; padding:12px; font-size:16px; margin:10px 0; border:1px solid #ccc; border-radius:8px;}
+.p-center button, .p-btn{padding:12px 26px; font-size:16px; background:var(--accent); color:#fff; border:none; border-radius:8px;}
+.p-btn:disabled{background:#aaa;}
+.p-btn-sub{padding:10px 18px; font-size:14px; background:#fff; color:#333; border:1px solid #999; border-radius:8px;}
+.p-card{background:#fff; margin:12px; padding:16px; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.p-genre{font-size:22px; font-weight:bold; color:#b8326a;}
+.p-count{display:inline-block; background:#ffd166; padding:2px 12px; border-radius:14px; font-weight:bold; margin-top:4px;}
+.p-mode{font-size:17px; font-weight:bold; margin:10px 0 4px; color:#2f4ea8;}
+.p-q-text{font-size:16px; white-space:pre-wrap; margin:10px 0; text-align:left; line-height:1.6;}
+.p-q-img{border-radius:8px; margin:6px 0; cursor:zoom-in; max-height:40vh;}
+.p-input-row{display:flex; align-items:center; justify-content:center; gap:8px; margin:12px 0 4px;}
+.p-input-row input{font-size:26px; width:120px; text-align:center; padding:8px; border:2px solid #bbb; border-radius:8px;}
+.p-input-row input.invalid{border-color:var(--bad);}
+.p-input-row .unit{font-size:20px;}
+.p-warn{color:var(--bad); font-size:14px; min-height:20px; margin:4px 0 8px;}
+.p-giveup{display:block; width:100%; margin:8px 0; padding:12px; font-size:16px; border-radius:8px; border:2px solid #999; background:#fff; color:#333;}
+.p-giveup.on{border-color:#7a4dd8; background:#efe7ff; color:#4b1fa8; font-weight:bold;}
+.p-submit{display:block; width:100%; padding:16px; font-size:18px; font-weight:bold; background:var(--good); color:#fff; border:none; border-radius:10px; margin-top:8px;}
+.p-submit:disabled{background:#aaa;}
+.p-sent{font-size:26px; font-weight:bold; color:var(--good); margin:12px 0;}
+.p-earned{font-size:48px; font-weight:bold; margin:16px 0;}
+.p-earned.pita{color:#c78a00;} .p-earned.near{color:var(--near);} .p-earned.zero{color:#666;}
+.p-tag{display:inline-block; background:#7a4dd8; color:#fff; padding:4px 12px; border-radius:14px;}
+.flash-toast{position:fixed; left:50%; bottom:30px; transform:translate(-50%,20px); background:#333; color:#fff; padding:10px 18px; border-radius:20px; opacity:0; transition:.25s; pointer-events:none; z-index:1000;}
+.flash-toast.show{opacity:1; transform:translate(-50%,0);}
+</style>
+</head>
+<body>
+
+<div id="page-admin" class="page">
+  <div class="admin-wrap">
+    <h1>多答クイズ 管理画面</h1>
+    <section class="card">
+      <h2>基本設定</h2>
+      <label>タイトル<br><input id="f-title" type="text" style="width:100%"></label>
+      <h3>クイズの形式（ゲーム全体で共通）</h3>
+      <div class="mode-radio">
+        <label><input type="radio" name="f-mode" value="time"> ⏱ 何秒で全部答えられるか（0秒からカウントアップ・最大45秒）</label>
+        <label><input type="radio" name="f-mode" value="count"> 🔢 45秒でいくつ答えられるか（45秒からカウントダウン）</label>
+      </div>
+    </section>
+    <section class="card">
+      <h2>ルール説明</h2>
+      <p class="muted">ゲーム開始時にホスト画面に表示されます（空のままならルール説明は飛ばします）。「次へ」を押すごとに段が1つずつ追加表示されます。</p>
+      <div id="rule-editor"></div>
+    </section>
+    <section class="card">
+      <h2>問題</h2>
+      <p class="muted">正解は「,」区切りでまとめて登録してください（例：<code>北海道,青森県,岩手県</code>）。正解数と登録した正解の数が一致しないとエラーになります。ジャンル名は重複できません。</p>
+      <div id="q-list"></div>
+      <button type="button" id="q-add" class="btn-mini">＋ 問題を追加</button>
+    </section>
+    <section class="card">
+      <h2>出題設定 最終確認</h2>
+      <div id="confirm-panel"></div>
+      <div class="row">
+        <button type="button" id="btn-export-text" class="btn-mini">📋 出題する問題と正解一覧をテキストで書き出す</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>データの引き継ぎ</h2>
+      <p class="muted">データはこの端末・このブラウザにだけ保存されています。別の端末やGitHub公開先へ持っていく場合は、JSONで書き出して向こうの管理画面で読み込んでください。</p>
+      <div class="row">
+        <button type="button" id="btn-export" class="btn-mini">📤 データを書き出す（JSON）</button>
+        <button type="button" id="btn-import" class="btn-mini">📥 データを読み込む（JSON）</button>
+        <input type="file" id="import-file-input" accept="application/json" style="display:none">
+      </div>
+    </section>
+    <div class="row sticky-actions">
+      <button type="button" id="btn-save" class="btn-primary">💾 保存する</button>
+      <button type="button" id="btn-open-host" class="btn-mini">▶ 保存してホスト画面を開く</button>
+    </div>
+  </div>
+</div>
+
+<div id="page-host" class="page">
+  <div id="host-root"></div>
+</div>
+
+<div id="page-participant" class="page">
+  <div id="participant-root"></div>
+</div>
+
+<div id="text-modal" class="text-modal">
+  <div class="text-modal-box">
+    <strong>出題する問題と正解一覧</strong>
+    <textarea id="text-modal-area" readonly></textarea>
+    <div class="row" style="justify-content:flex-end">
+      <button type="button" id="text-modal-copy" class="btn-primary">📋 コピーする</button>
+      <button type="button" id="text-modal-close" class="btn-mini">閉じる</button>
+    </div>
+  </div>
+</div>
+<div id="img-modal" class="img-modal"><img id="img-modal-src"></div>
+<div id="save-overlay" class="save-overlay">
+  <div class="save-box">
+    <div class="spinner"></div>
+    <div id="save-msg">保存中…</div>
+    <div class="save-bar-outer"><div id="save-bar" class="save-bar-inner"></div></div>
+    <div id="save-pct">0%</div>
+  </div>
+</div>
+
+<script>
+/* ---------- constants ---------- */
+const MAX_SEC=45, MAX_MS=MAX_SEC*1000;
+const DB_NAME='tatou_quiz_db', STORE_NAME='kv', DATA_KEY='appData';
+const LS_ROOM='tatou_room', LS_STATE='tatou_gamestate';
+const SS_PID='tatou_pid', SS_NAME='tatou_name';
+const params=new URLSearchParams(location.search);
+const MODE = params.get('mode')==='admin' ? 'admin' : (params.has('room') ? 'participant' : 'host');
+const MODE_LABEL={time:'何秒で全部答えられる？', count:MAX_SEC+'秒でいくつ答えられる？'};
+
+/* ---------- utils ---------- */
+function uid(p){return (p||'id')+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+function escapeHtml(s){return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderImgList(imgs, cls){
+  if(!imgs || !imgs.length) return '';
+  return `<div class="prompt-imgs">${imgs.map(src=>`<img class="${cls}" src="${src}">`).join('')}</div>`;
+}
+function flashMessage(text){
+  let el=document.getElementById('flash-toast');
+  if(!el){ el=document.createElement('div'); el.id='flash-toast'; el.className='flash-toast'; document.body.appendChild(el); }
+  el.textContent=text; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),1800);
+}
+function openImgModal(src){ document.getElementById('img-modal-src').src=src; document.getElementById('img-modal').classList.add('active'); }
+function closeImgModal(){ document.getElementById('img-modal').classList.remove('active'); }
+document.getElementById('img-modal').addEventListener('click', closeImgModal);
+document.addEventListener('click', e=>{
+  if(e.target.tagName==='IMG' && e.target.closest('.p-q-img,.q-img,.rule-img,.thumb')){ openImgModal(e.target.src); }
+});
+function parseAnswers(text){ return String(text||'').split(/[,，]/).map(s=>s.trim()).filter(Boolean); }
+function normalizeDigits(s){ return String(s==null?'':s).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).trim(); }
+function formatValue(v, mode){
+  if(v==null) return '未提出';
+  if(mode==='time') return v>=MAX_SEC ? `答えきれない（${MAX_SEC}秒）` : v+'秒';
+  return v+'個';
+}
+function stripHtml(h){ return String(h||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').trim(); }
+/** 予想・結果の入力チェック。mode=time は 1〜44（45 は「答えきれない」専用）、count は 0〜max */
+function validateNumber(raw, mode, max){
+  const s=normalizeDigits(raw);
+  if(s==='') return {ok:false, msg:''};
+  if(!/^\d+$/.test(s)) return {ok:false, msg:'整数の数字だけで入力してください'};
+  const v=Number(s);
+  if(mode==='time'){
+    if(v<1 || v>=MAX_SEC) return {ok:false, msg:`1〜${MAX_SEC-1}秒の範囲で入力してください（${MAX_SEC}秒以上は「答えきれない」を選んでください）`};
+  } else {
+    if(v>max) return {ok:false, msg:`0〜${max}個の範囲で入力してください`};
+  }
+  return {ok:true, value:v};
+}
+
+/* ---------- wake lock ---------- */
+let wakeLock=null;
+async function requestWakeLock(){ try{ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null;}); }catch(e){} }
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && !wakeLock && MODE!=='admin') requestWakeLock(); });
+
+/* ---------- IndexedDB ---------- */
+function openDb(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>{r.result.createObjectStore(STORE_NAME);};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function idbGet(){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readonly');const rq=tx.objectStore(STORE_NAME).get(DATA_KEY);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>rej(rq.error);});}
+async function idbSet(data){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,DATA_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+
+/* ---------- data model ---------- */
+function defaultAppData(){return { title:'多答クイズ', mode:'time', ruleSlides:[{img:null, groups:['']}], questions:[] };}
+function makeQ(){return {id:uid('q'), genre:'', text:'', imgs:[], answersText:'', answerCount:'', include:true, done:false};}
+function mergeLoadedAppData(loaded){
+  const d=defaultAppData();
+  const m=Object.assign({}, d, loaded||{});
+  if(m.mode!=='time' && m.mode!=='count') m.mode='time';
+  if(!Array.isArray(m.ruleSlides) || !m.ruleSlides.length) m.ruleSlides=d.ruleSlides;
+  m.ruleSlides.forEach(s=>{ if(!Array.isArray(s.groups)||!s.groups.length) s.groups=['']; });
+  m.questions=(Array.isArray(m.questions)?m.questions:[]).map(q=>Object.assign(makeQ(), q, {imgs:Array.isArray(q.imgs)?q.imgs:[]}));
+  return m;
+}
+let appData=defaultAppData();
+
+/** 問題ごとの入力エラー（空配列ならOK） */
+function questionErrors(q){
+  const errs=[];
+  const genre=(q.genre||'').trim();
+  if(!genre) errs.push('ジャンルが未入力です');
+  else if(appData.questions.some(o=>o!==q && (o.genre||'').trim()===genre)) errs.push('同じ名前のジャンルが他にもあります');
+  if(!(q.text||'').trim() && !(q.imgs&&q.imgs.length)) errs.push('問題文が未入力です');
+  const answers=parseAnswers(q.answersText);
+  const c=Number(q.answerCount);
+  if(q.answerCount==='' || q.answerCount==null || !Number.isInteger(c) || c<1) errs.push('正解数を入力してください');
+  else if(answers.length!==c) errs.push(`正解数（${c}）と登録した正解の数（${answers.length}）が一致しません`);
+  const dup=answers.filter((a,i)=>answers.indexOf(a)!==i);
+  if(dup.length) errs.push('同じ正解が重複しています：'+[...new Set(dup)].join('、'));
+  return errs;
+}
+function includedQs(){ return appData.questions.filter(q=>q.include); }
+
+function compressImageFile(file, maxDim, quality){
+  maxDim=maxDim||1000; quality=quality||0.8;
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(w>h){ if(w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;} } else { if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;} }
+        const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg',quality));
+      };
+      img.onerror=reject;
+      img.src=e.target.result;
+    };
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function showSaveOverlay(msg){document.getElementById('save-overlay').classList.add('active'); setSaveProgress(0,msg||'保存中…');}
+function setSaveProgress(pct,msg){document.getElementById('save-bar').style.width=pct+'%'; document.getElementById('save-pct').textContent=Math.round(pct)+'%'; if(msg)document.getElementById('save-msg').textContent=msg;}
+function hideSaveOverlay(){document.getElementById('save-overlay').classList.remove('active');}
+async function persistAppData(){
+  showSaveOverlay('保存中…');
+  setSaveProgress(40);
+  await idbSet(appData);
+  setSaveProgress(100,'保存しました');
+  await new Promise(r=>setTimeout(r,400));
+  hideSaveOverlay();
+}
+
+/* ---------- boot ---------- */
+document.addEventListener('DOMContentLoaded', init);
+async function init(){
+  const loaded=await idbGet();
+  if(loaded){ appData=mergeLoadedAppData(loaded); }
+  document.title = appData.title || '多答クイズ';
+  if(MODE==='admin'){ document.getElementById('page-admin').classList.add('active'); initAdmin(); }
+  else if(MODE==='participant'){ document.getElementById('page-participant').classList.add('active'); initParticipant(); }
+  else { document.getElementById('page-host').classList.add('active'); initHost(); }
+}
+
+/* ================= ADMIN ================= */
+let expandedIds=new Set();
+
+function initAdmin(){
+  document.getElementById('f-title').addEventListener('input',e=>{appData.title=e.target.value;});
+  document.querySelectorAll('input[name=f-mode]').forEach(r=>r.addEventListener('change',e=>{ if(e.target.checked){ appData.mode=e.target.value; renderConfirm(); } }));
+  attachRuleSlidesEvents();
+  document.getElementById('q-add').addEventListener('click',()=>{ const q=makeQ(); appData.questions.push(q); expandedIds.add(q.id); renderQList(); });
+  document.getElementById('btn-save').addEventListener('click', saveFromAdmin);
+  document.getElementById('btn-open-host').addEventListener('click', async ()=>{ await saveFromAdmin(); window.open(location.pathname,'_blank'); });
+  document.getElementById('btn-export').addEventListener('click', exportAppData);
+  document.getElementById('btn-import').addEventListener('click', ()=>document.getElementById('import-file-input').click());
+  document.getElementById('import-file-input').addEventListener('change', importAppDataFile);
+  document.getElementById('btn-export-text').addEventListener('click', openExportText);
+  document.getElementById('text-modal-close').addEventListener('click', ()=>document.getElementById('text-modal').classList.remove('active'));
+  document.getElementById('text-modal-copy').addEventListener('click', copyExportText);
+  attachQuestionListEvents();
+  refreshAdminUI();
+}
+function refreshAdminUI(){
+  document.getElementById('f-title').value=appData.title;
+  document.querySelectorAll('input[name=f-mode]').forEach(r=>{ r.checked=(r.value===appData.mode); });
+  renderRuleSlidesEditor();
+  renderQList();
+}
+async function saveFromAdmin(){
+  await persistAppData();
+  const bad=includedQs().filter(q=>questionErrors(q).length);
+  if(bad.length){
+    alert('保存しましたが、「出題する」の問題に入力エラーがあります。このままではゲームを開始できません。\n\n'+
+      bad.map(q=>`・${q.genre||'(ジャンル未入力)'}：${questionErrors(q).join(' / ')}`).join('\n'));
+  }
+}
+function exportAppData(){
+  const blob = new Blob([JSON.stringify(appData, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (appData.title||'tatou').replace(/[\\/:*?"<>|]/g,'_') + '_data.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+async function importAppDataFile(e){
+  const f = e.target.files[0]; if(!f) return;
+  try{
+    appData = mergeLoadedAppData(JSON.parse(await f.text()));
+    await persistAppData();
+    refreshAdminUI();
+    alert('読み込みが完了しました');
+  }catch(err){
+    alert('読み込みに失敗しました: ファイル形式を確認してください');
+  }
+  e.target.value='';
+}
+function buildExportText(){
+  const qs=includedQs();
+  const lines=[`${appData.title||'多答クイズ'}　出題一覧（形式：${MODE_LABEL[appData.mode]}）`, `全${qs.length}問`, ''];
+  qs.forEach((q,i)=>{
+    const answers=parseAnswers(q.answersText);
+    lines.push(`【${i+1}】ジャンル：${q.genre||'(未入力)'}（正解数：${q.answerCount===''?'未入力':q.answerCount}）`);
+    lines.push(`問題：${(q.text||'').replace(/\n/g,' ')}${q.imgs&&q.imgs.length?'（画像あり）':''}`);
+    lines.push(`正解：${answers.join('、')}`);
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+function openExportText(){
+  document.getElementById('text-modal-area').value=buildExportText();
+  document.getElementById('text-modal').classList.add('active');
+}
+async function copyExportText(){
+  const ta=document.getElementById('text-modal-area');
+  try{ await navigator.clipboard.writeText(ta.value); }
+  catch(e){ ta.select(); document.execCommand('copy'); }
+  flashMessage('コピーしました');
+}
+
+/* ---- rule slides editor ---- */
+function buildRuleSlidesEditorHTML(){
+  const slides=appData.ruleSlides;
+  return slides.map((slide,si)=>`
+    <div class="rule-slide-card" data-si="${si}">
+      <div class="rule-slide-head">
+        <span class="q-idx">ページ${si+1}</span>
+        <button type="button" class="btn-mini rs-act" data-act="slide-up" ${si===0?'disabled':''}>🔼</button>
+        <button type="button" class="btn-mini rs-act" data-act="slide-down" ${si===slides.length-1?'disabled':''}>🔽</button>
+        <button type="button" class="btn-mini rs-act" data-act="slide-del" ${slides.length<=1?'disabled':''}>🗑 ページ削除</button>
+      </div>
+      <div class="row">
+        <input type="file" accept="image/*" class="rs-act" data-act="slide-img-input">
+        ${slide.img?`<img class="thumb" src="${slide.img}"><button type="button" class="btn-mini rs-act" data-act="slide-img-remove">画像を削除</button>`:''}
+      </div>
+      ${slide.groups.map((g,gi)=>`
+        <div class="rule-group-block" data-gi="${gi}">
+          <div class="rich-toolbar">
+            <span class="muted" style="font-size:12px">段${gi+1}</span>
+            <button type="button" class="rs-act" data-act="fmt" data-cmd="bold">太字</button>
+            <button type="button" class="rs-act" data-act="fmt" data-cmd="colorclass" data-val="rule-red">赤字</button>
+            <button type="button" class="rs-act" data-act="fmt" data-cmd="colorclass" data-val="rule-normal">黒字</button>
+            <button type="button" class="rs-act" data-act="fmt" data-cmd="upsize">文字を大きく</button>
+            <button type="button" class="rs-act" data-act="fmt" data-cmd="removeFormat">標準文字</button>
+            <button type="button" class="btn-mini rs-act" data-act="group-up" ${gi===0?'disabled':''}>▲段</button>
+            <button type="button" class="btn-mini rs-act" data-act="group-down" ${gi===slide.groups.length-1?'disabled':''}>▼段</button>
+            <button type="button" class="btn-mini rs-act" data-act="group-del" ${slide.groups.length<=1?'disabled':''}>🗑段</button>
+          </div>
+          <div class="rule-edit rule-group-edit" contenteditable="true">${g||''}</div>
+        </div>`).join('')}
+      <button type="button" class="btn-mini rs-act" data-act="group-add">＋ 段を追加</button>
+    </div>`).join('') + `<button type="button" class="btn-mini rs-slide-add">＋ ページを追加</button>`;
+}
+function renderRuleSlidesEditor(){ document.getElementById('rule-editor').innerHTML=buildRuleSlidesEditorHTML(); }
+function attachRuleSlidesEvents(){
+  const container=document.getElementById('rule-editor');
+  container.addEventListener('mousedown', e=>{ if(e.target.closest('.rich-toolbar')) e.preventDefault(); });
+  container.addEventListener('click', e=>{
+    if(e.target.closest('.rs-slide-add')){ appData.ruleSlides.push({img:null, groups:['']}); renderRuleSlidesEditor(); return; }
+    const slideCard=e.target.closest('.rule-slide-card'); if(!slideCard) return;
+    const si=Number(slideCard.dataset.si);
+    const slides=appData.ruleSlides, slide=slides[si];
+    const groupBlock=e.target.closest('.rule-group-block');
+    const gi = groupBlock ? Number(groupBlock.dataset.gi) : null;
+    const act=e.target.dataset.act;
+    if(act==='slide-up'){ if(si>0){ [slides[si-1],slides[si]]=[slides[si],slides[si-1]]; renderRuleSlidesEditor(); } }
+    else if(act==='slide-down'){ if(si<slides.length-1){ [slides[si+1],slides[si]]=[slides[si],slides[si+1]]; renderRuleSlidesEditor(); } }
+    else if(act==='slide-del'){ if(slides.length>1 && confirm('このページを削除しますか？')){ slides.splice(si,1); renderRuleSlidesEditor(); } }
+    else if(act==='slide-img-remove'){ slide.img=null; renderRuleSlidesEditor(); }
+    else if(act==='group-add'){ slide.groups.push(''); renderRuleSlidesEditor(); }
+    else if(act==='group-up'){ if(gi>0){ [slide.groups[gi-1],slide.groups[gi]]=[slide.groups[gi],slide.groups[gi-1]]; renderRuleSlidesEditor(); } }
+    else if(act==='group-down'){ if(gi<slide.groups.length-1){ [slide.groups[gi+1],slide.groups[gi]]=[slide.groups[gi],slide.groups[gi+1]]; renderRuleSlidesEditor(); } }
+    else if(act==='group-del'){ if(slide.groups.length>1){ slide.groups.splice(gi,1); renderRuleSlidesEditor(); } }
+    else if(act==='fmt'){
+      const editEl=groupBlock.querySelector('.rule-group-edit');
+      editEl.focus();
+      const cmd=e.target.dataset.cmd;
+      if(cmd==='upsize'){ wrapSelectionBig(); }
+      else if(cmd==='colorclass'){ wrapSelectionClass(e.target.dataset.val); }
+      else { document.execCommand(cmd, false, null); }
+      slide.groups[gi]=editEl.innerHTML;
+    }
+  });
+  container.addEventListener('input', e=>{
+    const editEl=e.target.closest('.rule-group-edit'); if(!editEl) return;
+    const slideCard=e.target.closest('.rule-slide-card'); const groupBlock=e.target.closest('.rule-group-block');
+    appData.ruleSlides[Number(slideCard.dataset.si)].groups[Number(groupBlock.dataset.gi)]=editEl.innerHTML;
+  });
+  container.addEventListener('change', async e=>{
+    if(e.target.dataset.act==='slide-img-input'){
+      const si=Number(e.target.closest('.rule-slide-card').dataset.si);
+      const f=e.target.files[0]; if(!f) return;
+      appData.ruleSlides[si].img = await compressImageFile(f);
+      renderRuleSlidesEditor();
+    }
+  });
+}
+function wrapSelectionBig(){
+  const sel=window.getSelection(); if(!sel.rangeCount) return;
+  const range=sel.getRangeAt(0); if(range.collapsed) return;
+  const span=document.createElement('span'); span.style.fontSize='1.5em';
+  span.appendChild(range.extractContents()); range.insertNode(span);
+  // 色クラス付きspanの中で拡大した場合、拡大した要素自身にも色クラスを持たせてハイライト枠を拡大後サイズで描画させる
+  const parent=span.parentNode;
+  if(parent && parent.classList && (parent.classList.contains('rule-red')||parent.classList.contains('rule-normal'))){
+    const cls=parent.classList.contains('rule-red')?'rule-red':'rule-normal';
+    span.classList.add(cls);
+    const otherSiblings=Array.from(parent.childNodes).filter(n=>n!==span && !(n.nodeType===3 && n.textContent===''));
+    if(otherSiblings.length===0){
+      const grandparent=parent.parentNode;
+      if(grandparent){ grandparent.insertBefore(span, parent); grandparent.removeChild(parent); }
+    }
+  }
+}
+function wrapSelectionClass(cls){
+  const sel=window.getSelection(); if(!sel.rangeCount) return;
+  const range=sel.getRangeAt(0); if(range.collapsed) return;
+  const frag=range.extractContents();
+  const stripColorClasses=node=>{
+    if(node.nodeType===1){
+      if(node.classList){
+        node.classList.remove('rule-red','rule-normal');
+        if(node.classList.length===0) node.removeAttribute('class');
+      }
+      Array.from(node.childNodes).forEach(stripColorClasses);
+    }
+  };
+  Array.from(frag.childNodes).forEach(stripColorClasses);
+  const span=document.createElement('span'); span.className=cls;
+  span.appendChild(frag); range.insertNode(span);
+  // 既に色付きの祖先spanの中身全体を選んでいた場合、祖先が残って色クラスが二重になるので外す
+  let node=span;
+  while(node.parentNode && node.parentNode.classList && (node.parentNode.classList.contains('rule-red')||node.parentNode.classList.contains('rule-normal'))){
+    const parent=node.parentNode;
+    const otherSiblings=Array.from(parent.childNodes).filter(n=>n!==node && !(n.nodeType===3 && n.textContent===''));
+    if(otherSiblings.length>0) break;
+    const grandparent=parent.parentNode; if(!grandparent) break;
+    grandparent.insertBefore(node, parent);
+    grandparent.removeChild(parent);
+  }
+}
+
+/* ---- question list ---- */
+function buildQHeadInnerHTML(q, idx){
+  const errs=questionErrors(q);
+  return `<span class="drag-handle" title="ドラッグで並べ替え">⠿</span>
+      <span class="q-idx">#${idx+1}</span>
+      <span class="q-genre">${escapeHtml(q.genre||'(ジャンル未入力)')}</span>
+      <span class="q-count">正解数 ${q.answerCount===''?'?':escapeHtml(q.answerCount)}</span>
+      ${errs.length?`<span class="q-err-badge" title="${escapeHtml(errs.join(' / '))}">⚠ エラー${errs.length}件</span>`:''}
+      <span class="q-title-preview">${escapeHtml((q.text||'').slice(0,40))}</span>
+      <label class="chk"><input type="checkbox" class="chk-include" ${q.include?'checked':''}> 出題する</label>
+      <label class="chk"><input type="checkbox" class="chk-done" ${q.done?'checked':''}> 出題済み</label>
+      <button type="button" class="btn-mini btn-expand">${expandedIds.has(q.id)?'▲閉じる':'▼詳細'}</button>
+      <button type="button" class="btn-mini btn-up">🔼</button>
+      <button type="button" class="btn-mini btn-down">🔽</button>
+      <button type="button" class="btn-mini btn-del">🗑</button>`;
+}
+function buildQStatusHTML(q){
+  const n=parseAnswers(q.answersText).length;
+  const errs=questionErrors(q);
+  return `登録した正解：<strong>${n}</strong>個 ／ 正解数：<strong>${q.answerCount===''?'未入力':escapeHtml(q.answerCount)}</strong>　` +
+    (errs.length ? errs.map(e=>`<div class="ng">⚠ ${escapeHtml(e)}</div>`).join('') : '<span class="ok">✅ OK</span>');
+}
+function buildQCardHTML(q, idx){
+  const expanded=expandedIds.has(q.id);
+  const hasErr=questionErrors(q).length>0;
+  return `<div class="q-card ${hasErr?'has-error':''}" data-id="${q.id}">
+    <div class="q-head" draggable="true">${buildQHeadInnerHTML(q, idx)}</div>
+    ${expanded?`<div class="q-detail">
+      <label>ジャンル（ホスト画面の選択肢に出ます。同じ名前は不可）<br><input type="text" class="f-genre" style="width:100%" value="${escapeHtml(q.genre)}" placeholder="例：都道府県①"></label>
+      <label>問題文<textarea class="f-text" rows="2">${escapeHtml(q.text)}</textarea></label>
+      <div class="row">
+        <label>問題画像（複数可）<input type="file" accept="image/*" class="f-img-input" multiple></label>
+        ${(q.imgs||[]).map((img,i)=>`<div class="thumb-wrap"><img class="thumb" src="${img}"><button type="button" class="btn-mini f-img-del" data-i="${i}">✕</button></div>`).join('')}
+      </div>
+      <div class="answers-block">
+        <label>正解一覧（「,」区切りでまとめて登録）<textarea class="f-answers" rows="3" placeholder="例：北海道,青森県,岩手県">${escapeHtml(q.answersText)}</textarea></label>
+        <label>正解数 <input type="number" min="1" class="f-count" style="width:90px" value="${escapeHtml(q.answerCount)}"> 個</label>
+        <div class="q-status">${buildQStatusHTML(q)}</div>
+      </div>
+    </div>`:''}
+  </div>`;
+}
+function renderQList(){
+  const list=appData.questions;
+  document.getElementById('q-list').innerHTML = list.map((q,i)=>buildQCardHTML(q,i)).join('') || '<p class="muted">まだ問題がありません</p>';
+  renderConfirm();
+}
+/** 入力中はカードを作り直さず、ヘッダーとエラー表示だけ差し替える（フォーカスを失わないため） */
+function refreshQStatuses(){
+  document.querySelectorAll('#q-list .q-card').forEach(card=>{
+    const idx=appData.questions.findIndex(q=>q.id===card.dataset.id); if(idx<0) return;
+    const q=appData.questions[idx];
+    card.querySelector('.q-head').innerHTML=buildQHeadInnerHTML(q, idx);
+    card.classList.toggle('has-error', questionErrors(q).length>0);
+    const st=card.querySelector('.q-status'); if(st) st.innerHTML=buildQStatusHTML(q);
+  });
+  renderConfirm();
+}
+function attachQuestionListEvents(){
+  const el=document.getElementById('q-list');
+  const findQ=target=>{ const card=target.closest('.q-card'); if(!card) return null; const idx=appData.questions.findIndex(q=>q.id===card.dataset.id); return idx<0?null:{idx, q:appData.questions[idx]}; };
+  el.addEventListener('click', e=>{
+    const f=findQ(e.target); if(!f) return; const {idx,q}=f; const list=appData.questions;
+    if(e.target.classList.contains('btn-expand')){ expandedIds.has(q.id)?expandedIds.delete(q.id):expandedIds.add(q.id); renderQList(); }
+    else if(e.target.classList.contains('btn-up')){ if(idx>0){[list[idx-1],list[idx]]=[list[idx],list[idx-1]]; renderQList();} }
+    else if(e.target.classList.contains('btn-down')){ if(idx<list.length-1){[list[idx+1],list[idx]]=[list[idx],list[idx+1]]; renderQList();} }
+    else if(e.target.classList.contains('btn-del')){ if(confirm('この問題を削除しますか？')){ list.splice(idx,1); renderQList(); } }
+    else if(e.target.classList.contains('f-img-del')){ q.imgs.splice(Number(e.target.dataset.i),1); renderQList(); }
+  });
+  el.addEventListener('input', e=>{
+    const f=findQ(e.target); if(!f) return; const q=f.q;
+    if(e.target.classList.contains('f-genre')) q.genre=e.target.value;
+    else if(e.target.classList.contains('f-text')) q.text=e.target.value;
+    else if(e.target.classList.contains('f-answers')) q.answersText=e.target.value;
+    else if(e.target.classList.contains('f-count')) q.answerCount=e.target.value===''?'':Number(e.target.value);
+    else return;
+    refreshQStatuses();
+  });
+  el.addEventListener('change', e=>{
+    const f=findQ(e.target); if(!f) return; const q=f.q;
+    if(e.target.classList.contains('chk-include')){ q.include=e.target.checked; renderConfirm(); }
+    else if(e.target.classList.contains('chk-done')){ q.done=e.target.checked; }
+    else if(e.target.classList.contains('f-img-input')){
+      const files=Array.from(e.target.files||[]); if(!files.length) return;
+      Promise.all(files.map(file=>compressImageFile(file))).then(urls=>{ q.imgs.push(...urls); renderQList(); });
+    }
+  });
+  let dragId=null;
+  el.addEventListener('dragstart', e=>{ const card=e.target.closest('.q-card'); if(card){ dragId=card.dataset.id; e.dataTransfer.effectAllowed='move'; } });
+  el.addEventListener('dragover', e=>{ e.preventDefault(); });
+  el.addEventListener('drop', e=>{
+    e.preventDefault();
+    const card=e.target.closest('.q-card'); if(!card || !dragId) return;
+    const list=appData.questions;
+    const fromIdx=list.findIndex(q=>q.id===dragId), toIdx=list.findIndex(q=>q.id===card.dataset.id);
+    dragId=null;
+    if(fromIdx<0||toIdx<0||fromIdx===toIdx) return;
+    const [item]=list.splice(fromIdx,1); list.splice(toIdx,0,item);
+    renderQList();
+  });
+}
+function renderConfirm(){
+  const el=document.getElementById('confirm-panel'); if(!el) return;
+  const qs=includedQs();
+  const errCount=qs.filter(q=>questionErrors(q).length).length;
+  el.innerHTML = `
+    <p>形式：<strong>${MODE_LABEL[appData.mode]}</strong>（${appData.mode==='time'?'0秒からカウントアップ／最大45秒':'45秒からカウントダウン'}）</p>
+    <p>出題する問題：<strong>${qs.length}問</strong>（参加者は最大${qs.length}人まで。参加者より問題が少ないとゲームを開始できません）</p>
+    ${errCount?`<p class="confirm-err">⚠ 入力エラーのある問題が${errCount}問あります（このままでは開始できません）</p>`:''}
+    <ol class="confirm-list">${qs.map(q=>{
+      const errs=questionErrors(q);
+      return `<li><strong>${escapeHtml(q.genre||'(ジャンル未入力)')}</strong>（正解数 ${q.answerCount===''?'?':escapeHtml(q.answerCount)}）<span class="muted">　${escapeHtml((q.text||'').slice(0,50))}</span>${q.done?' <span class="muted">［出題済み］</span>':''}
+        ${errs.length?`<div class="confirm-err">⚠ ${errs.map(escapeHtml).join(' / ')}</div>`:''}</li>`;
+    }).join('') || '<li class="muted">「出題する」にチェックされた問題がありません</li>'}</ol>`;
+}
+
+/* ================= HOST ================= */
+let peer=null, myHostId=null, gameState=null;
+let lotteryAnimating=false;
+
+function freshGameState(){return {
+  phase:'lobby',                 // lobby | rule | lottery | genre | predict | question | reveal_answers | reveal_predictions | final
+  ruleSlideIndex:0, ruleRevealIndex:0,
+  players:{},                    // pid -> {name, connected}
+  answererOrder:[],              // 解答者に選ばれた順（1人1回）
+  usedQids:[],                   // このゲームで出題済みの問題ID（ジャンルのグレーアウト用）
+  history:[],                    // 終わった問題 {answererId, q, result, predictions, scores}
+  lottery:{drawnId:null, animDone:false},
+  round:null,
+  timer:{running:false, startedAt:0, baseMs:0},
+  finalRanks:null, finalStep:-1
+};}
+function freshRound(answererId){return {answererId, q:null, predictions:{}, result:null, resultDraft:'', resultGiveUp:false};}
+function genRoomId(){ return String(Math.floor(100000+Math.random()*900000)); }
+
+async function initHost(){
+  requestWakeLock();
+  document.getElementById('host-root').addEventListener('click', e=>{
+    const el=e.target.closest('[data-action]'); if(!el || el.disabled) return;
+    const fn=hostActions[el.dataset.action]; if(fn) fn(el.dataset.arg, el);
+  });
+  document.getElementById('host-root').addEventListener('input', onHostInput);
+  document.addEventListener('keydown', e=>{
+    if(e.key!=='Enter') return;
+    const tag=(e.target.tagName||'').toLowerCase();
+    if(tag==='input'||tag==='textarea'||e.target.isContentEditable) return;
+    e.preventDefault(); handleHostEnter();
+  });
+  setInterval(tickTimer, 50);
+  const savedRoom=localStorage.getItem(LS_ROOM);
+  const savedStateRaw=localStorage.getItem(LS_STATE);
+  if(savedRoom && savedStateRaw){
+    if(confirm('前回の続きがあります。続きから再開しますか？（キャンセルで新しい部屋を作成します）')){
+      try{
+        gameState=Object.assign(freshGameState(), JSON.parse(savedStateRaw));
+        Object.values(gameState.players).forEach(p=>{p.conn=null; p.connected=false;});
+        if(gameState.phase==='lottery' && gameState.lottery.drawnId) gameState.lottery.animDone=true;
+        startPeer(savedRoom, 0);
+        return;
+      }catch(e){}
+    }
+    localStorage.removeItem(LS_STATE); localStorage.removeItem(LS_ROOM);
+  }
+  gameState=freshGameState();
+  startPeer(null, 0);
+}
+function startPeer(roomId, retry){
+  const id = roomId || genRoomId();
+  if(peer){ try{ peer.destroy(); }catch(e){} }
+  peer = new Peer(id);
+  peer.on('open', pid=>{ myHostId=pid; localStorage.setItem(LS_ROOM,pid); saveGameState(); renderHost(); });
+  peer.on('connection', conn=>{
+    conn.on('data', data=>handleParticipantMessage(conn,data));
+    conn.on('close', ()=>{ const p=findPlayerByConn(conn); if(p){ p.connected=false; p.conn=null; renderHostSafe(); } });
+  });
+  peer.on('error', err=>{
+    if(err && err.type==='unavailable-id'){
+      // 再開時は前の部屋番号がまだ解放されていないことがあるので数回リトライしてから新番号へ
+      if(roomId && retry<5){ setTimeout(()=>startPeer(roomId, retry+1), 3000); }
+      else { flashMessage('部屋番号を新しくしました。参加者はQRから入り直してください'); startPeer(null, 0); }
+    } else { console.error(err); }
+  });
+  peer.on('disconnected', ()=>{ try{ peer.reconnect(); }catch(e){} });
+}
+function findPlayerByConn(conn){ return Object.values(gameState.players).find(p=>p.conn===conn); }
+function saveGameState(){
+  const clone=JSON.parse(JSON.stringify(gameState, (k,v)=> k==='conn' ? undefined : v));
+  localStorage.setItem(LS_STATE, JSON.stringify(clone));
+}
+function sendTo(pid,msg){ const p=gameState.players[pid]; if(p&&p.conn&&p.conn.open){ try{p.conn.send(msg);}catch(e){} } }
+function broadcastStateSync(){ Object.keys(gameState.players).forEach(sendStateSyncTo); }
+function pname(pid){ const p=gameState.players[pid]; return p?p.name:'(退出)'; }
+
+function handleParticipantMessage(conn, data){
+  if(!data || !data.type) return;
+  if(data.type==='join'){
+    const name=String(data.name||'').trim().slice(0,12);
+    let p=gameState.players[data.playerId];
+    if(!p){
+      // タブを閉じて入り直した人：同じニックネームで切断中の人がいれば、その人として復帰させる
+      const sameEntry=Object.entries(gameState.players).find(([,o])=>o.name===name);
+      if(sameEntry){
+        const [oldId, old]=sameEntry;
+        if(!old.connected){ try{ conn.send({type:'adopt_pid', playerId:oldId}); }catch(e){} return; }
+        try{ conn.send({type:'name_taken'}); }catch(e){} return;
+      }
+      p=gameState.players[data.playerId]={name, conn, connected:true};
+    } else {
+      p.conn=conn; p.connected=true; if(name) p.name=name;
+    }
+    saveGameState(); renderHostSafe();
+    sendStateSyncTo(data.playerId);
+  } else if(data.type==='predict'){
+    const r=gameState.round;
+    if(gameState.phase!=='predict' || !r || !r.q || data.playerId===r.answererId || !gameState.players[data.playerId]) return;
+    let v=null;
+    if(appData.mode==='time' && data.giveUp) v=MAX_SEC;
+    else { const chk=validateNumber(data.value, appData.mode, r.q.answerCount); if(!chk.ok) return; v=chk.value; }
+    r.predictions[data.playerId]=v;
+    saveGameState(); renderHostSafe();
+    sendStateSyncTo(data.playerId);
+  }
+}
+
+function roundNo(){ return gameState.answererOrder.length; }
+function totalRounds(){ return Object.keys(gameState.players).length; }
+function unchosenIds(){ return Object.keys(gameState.players).filter(id=>!gameState.answererOrder.includes(id)); }
+function remainingQs(){ return includedQs().filter(q=>!gameState.usedQids.includes(q.id)); }
+function isLastRound(){ return unchosenIds().length===0; }
+function roundLabel(){
+  const n=roundNo(); if(!n) return '';
+  return isLastRound() ? `第${n}問（最終問題）` : `第${n}問／全${totalRounds()}問`;
+}
+
+function sendStateSyncTo(pid){
+  const p=gameState.players[pid]; if(!p) return;
+  const phase=gameState.phase, r=gameState.round;
+  const payload={phase, title:appData.title, mode:appData.mode, name:p.name};
+  const isAnswerer = !!(r && r.answererId===pid);
+  if(phase==='lottery'){ payload.isAnswerer = gameState.lottery.animDone && gameState.lottery.drawnId===pid; }
+  else if(phase==='genre'){ payload.isAnswerer=isAnswerer; }
+  else if(phase==='predict'){
+    payload.isAnswerer=isAnswerer;
+    payload.roundKey=roundNo()+':'+(r.q?r.q.id:'');
+    if(!isAnswerer && r.q){ payload.q={genre:r.q.genre, text:r.q.text, imgs:r.q.imgs, answerCount:r.q.answerCount}; }
+    payload.myPrediction = r.predictions[pid]!=null ? r.predictions[pid] : null;
+  }
+  else if(phase==='question' || phase==='reveal_answers'){
+    payload.isAnswerer=isAnswerer;
+    payload.myPrediction = r && r.predictions[pid]!=null ? r.predictions[pid] : null;
+  }
+  else if(phase==='reveal_predictions'){
+    payload.isAnswerer=isAnswerer;
+    payload.myPrediction = r.predictions[pid]!=null ? r.predictions[pid] : null;
+    payload.earned = computeScores(r)[pid]||0;
+  }
+  else if(phase==='final'){
+    const steps=finalSteps();
+    payload.allRevealed = gameState.finalStep>=steps.length-1;
+    if(payload.allRevealed){ const me=(gameState.finalRanks||[]).find(x=>x.id===pid); if(me){ payload.myRank=me.rank; payload.myTotal=me.total; } }
+  }
+  sendTo(pid,{type:'state_sync', payload});
+}
+
+/* ---- scoring ---- */
+/** ピタリ=3点。ピタリ以外の予想の中で結果との差（絶対値）が最小の人全員=1点 */
+function computeScores(r){
+  const scores={};
+  if(!r || r.result==null) return scores;
+  const entries=Object.entries(r.predictions).filter(([pid])=>pid!==r.answererId);
+  let minD=Infinity;
+  entries.forEach(([,v])=>{ if(v!==r.result) minD=Math.min(minD, Math.abs(v-r.result)); });
+  entries.forEach(([pid,v])=>{ scores[pid] = v===r.result ? 3 : (Math.abs(v-r.result)===minD ? 1 : 0); });
+  return scores;
+}
+function computeRanks(){
+  const totals={};
+  Object.keys(gameState.players).forEach(id=>totals[id]=0);
+  gameState.history.forEach(h=>Object.entries(h.scores||{}).forEach(([id,s])=>{ if(id in totals) totals[id]+=s; }));
+  const arr=Object.keys(totals).map(id=>({id, name:pname(id), total:totals[id]})).sort((a,b)=>b.total-a.total);
+  arr.forEach((x,i)=>{ x.rank = (i>0 && arr[i-1].total===x.total) ? arr[i-1].rank : i+1; });
+  return arr;
+}
+function finalSteps(){
+  const ranks=gameState.finalRanks||[];
+  const steps=[];
+  const low=ranks.filter(x=>x.rank>=4);
+  if(low.length) steps.push({label:'4位以下', rows:low, kind:'low'});
+  [3,2,1].forEach(k=>{ const g=ranks.filter(x=>x.rank===k); if(g.length) steps.push({label:k+'位', rows:g, kind:'top', rank:k}); });
+  return steps;
+}
+
+/* ---- timer ---- */
+function timerElapsed(){ const t=gameState.timer; return Math.min(MAX_MS, t.baseMs + (t.running ? Date.now()-t.startedAt : 0)); }
+function timerDisplayMs(){ const e=timerElapsed(); return appData.mode==='time' ? e : MAX_MS-e; }
+function tickTimer(){
+  if(!gameState || gameState.phase!=='question') return;
+  try{
+    const el=document.getElementById('big-timer');
+    if(el) el.firstChild.textContent=(timerDisplayMs()/1000).toFixed(1);
+    const bar=document.getElementById('timer-bar'); if(bar) bar.style.width=(timerElapsed()/MAX_MS*100)+'%';
+    if(gameState.timer.running && timerElapsed()>=MAX_MS){
+      gameState.timer.running=false; gameState.timer.baseMs=MAX_MS;
+      saveGameState(); renderHost();
+    }
+  }catch(e){ console.error(e); }
+}
+
+/* ---- host actions ---- */
+const hostActions={
+  'open-admin': ()=>{ window.open(location.pathname+'?mode=admin','_blank'); },
+  'reset-room': ()=>{ if(confirm('新しい部屋を作り直しますか？（参加者・進行状況はすべてリセットされ、参加者はQRから入り直しになります）')){ localStorage.removeItem(LS_STATE); localStorage.removeItem(LS_ROOM); location.reload(); } },
+  'restart-all': ()=>{ if(confirm('参加者はそのままで、ゲームを最初（参加者募集）からやり直しますか？')){ restartGame(); } },
+  'remove-player': (pid)=>{
+    if(!confirm(`「${pname(pid)}」さんを参加者から外しますか？`)) return;
+    sendTo(pid,{type:'removed'}); delete gameState.players[pid]; saveGameState(); renderHost();
+  },
+  'start-game': ()=>{ startGame(); },
+  'rule-next': ()=>{ advanceRule(); },
+  'rule-prev': ()=>{ retreatRule(); },
+  'draw': ()=>{ drawLottery(); },
+  'redraw': ()=>{ redrawLottery(); },
+  'to-genre': ()=>{ gameState.phase='genre'; saveGameState(); broadcastStateSync(); renderHost(); },
+  'pick-genre': (qid)=>{ pickGenre(qid); },
+  'back-to-lottery-result': ()=>{ gameState.phase='lottery'; saveGameState(); broadcastStateSync(); renderHost(); },
+  'close-predict': ()=>{
+    const r=gameState.round;
+    const expected=Object.keys(gameState.players).filter(id=>id!==r.answererId);
+    const missing=expected.filter(id=>r.predictions[id]==null);
+    if(missing.length && !confirm(`まだ予想していない人がいます（${missing.map(pname).join('、')}）。締め切りますか？`)) return;
+    gameState.timer={running:false, startedAt:0, baseMs:0};
+    gameState.phase='question'; saveGameState(); broadcastStateSync(); renderHost();
+  },
+  'timer-start': ()=>{ const t=gameState.timer; if(t.running || timerElapsed()>=MAX_MS) return; t.running=true; t.startedAt=Date.now(); saveGameState(); renderHost(); },
+  'timer-stop': ()=>{ const t=gameState.timer; if(!t.running) return; t.baseMs=timerElapsed(); t.running=false; saveGameState(); renderHost(); },
+  'timer-reset': ()=>{ gameState.timer={running:false, startedAt:0, baseMs:0}; saveGameState(); renderHost(); },
+  'toggle-giveup': ()=>{ const r=gameState.round; r.resultGiveUp=!r.resultGiveUp; saveGameState(); renderHost(); },
+  'confirm-result': ()=>{ confirmResult(); },
+  'show-predictions': ()=>{ gameState.phase='reveal_predictions'; saveGameState(); broadcastStateSync(); renderHost(); },
+  'back-to-question': ()=>{ gameState.phase='question'; saveGameState(); broadcastStateSync(); renderHost(); },
+  'back-to-answers': ()=>{ gameState.phase='reveal_answers'; saveGameState(); broadcastStateSync(); renderHost(); },
+  'next-round': ()=>{ finishRound(); },
+  'go-final': ()=>{ goFinal(); },
+  'final-next': ()=>{ advanceFinal(); }
+};
+function handleHostEnter(){
+  if(!gameState || lotteryAnimating) return;
+  switch(gameState.phase){
+    case 'rule': advanceRule(); break;
+    case 'lottery':
+      if(!gameState.lottery.drawnId){ if(canDraw()) drawLottery(); }
+      else if(gameState.lottery.animDone) hostActions['to-genre']();
+      break;
+    case 'reveal_answers': hostActions['show-predictions'](); break;
+    case 'reveal_predictions': finishRound(); break;
+    case 'final': advanceFinal(); break;
+  }
+}
+function onHostInput(e){
+  if(e.target.id==='result-input' && gameState.round){
+    gameState.round.resultDraft=e.target.value;
+    const errEl=document.getElementById('result-err');
+    if(errEl){ const chk=validateResultInput(); errEl.textContent=chk.ok?'':chk.msg; }
+  }
+}
+
+/* ---- flow ---- */
+function hasRuleContent(){ return appData.ruleSlides.some(s=>s.img || s.groups.some(g=>stripHtml(g))); }
+async function startGame(){
+  const loaded=await idbGet(); if(loaded) appData=mergeLoadedAppData(loaded);
+  const qs=includedQs();
+  const n=Object.keys(gameState.players).length;
+  const errs=[];
+  if(n<2) errs.push(`参加者が2人以上必要です（現在${n}人）`);
+  const bad=qs.filter(q=>questionErrors(q).length);
+  if(bad.length) errs.push('入力エラーのある問題があります。管理画面で修正してください：\n'+bad.map(q=>`・${q.genre||'(ジャンル未入力)'}：${questionErrors(q).join(' / ')}`).join('\n'));
+  if(qs.length<n) errs.push(`出題する問題（${qs.length}問）が参加者の人数（${n}人）より少ないです。管理画面で問題を追加するか「出題する」にチェックを入れてください。`);
+  if(errs.length){ alert('ゲームを開始できません\n\n'+errs.join('\n\n')); return; }
+  if(hasRuleContent()){ gameState.phase='rule'; gameState.ruleSlideIndex=0; gameState.ruleRevealIndex=0; }
+  else enterLottery();
+  saveGameState(); broadcastStateSync(); renderHost();
+}
+function advanceRule(){
+  const slides=appData.ruleSlides, si=gameState.ruleSlideIndex, slide=slides[si];
+  if(gameState.ruleRevealIndex < slide.groups.length-1){ gameState.ruleRevealIndex++; }
+  else if(si < slides.length-1){ gameState.ruleSlideIndex++; gameState.ruleRevealIndex=0; }
+  else { enterLottery(); saveGameState(); broadcastStateSync(); renderHost(); return; }
+  saveGameState(); renderHost();
+}
+function retreatRule(){
+  const slides=appData.ruleSlides;
+  if(gameState.ruleRevealIndex>0){ gameState.ruleRevealIndex--; }
+  else if(gameState.ruleSlideIndex>0){ gameState.ruleSlideIndex--; gameState.ruleRevealIndex=slides[gameState.ruleSlideIndex].groups.length-1; }
+  saveGameState(); renderHost();
+}
+function enterLottery(){
+  gameState.phase='lottery'; gameState.lottery={drawnId:null, animDone:false}; gameState.round=null;
+}
+function drawPool(){ return unchosenIds().filter(id=>gameState.players[id].connected); }
+function canDraw(){ return drawPool().length>0 && remainingQs().length>0; }
+function drawLottery(){
+  if(gameState.lottery.drawnId || lotteryAnimating) return;
+  const pool=drawPool(); if(!pool.length || !remainingQs().length) return;
+  const id=pool[Math.floor(Math.random()*pool.length)];
+  gameState.lottery={drawnId:id, animDone:false};
+  gameState.answererOrder.push(id);
+  gameState.round=freshRound(id);
+  saveGameState();
+  playLotteryAnimation();
+}
+function redrawLottery(){
+  const id=gameState.lottery.drawnId; if(!id) return;
+  if(!confirm(`「${pname(id)}」さんの当選を取り消して引き直しますか？`)) return;
+  gameState.answererOrder=gameState.answererOrder.filter(x=>x!==id);
+  enterLottery(); saveGameState(); broadcastStateSync(); renderHost();
+}
+function pickGenre(qid){
+  const q=includedQs().find(x=>x.id===qid);
+  if(!q || gameState.usedQids.includes(qid)) return;
+  if(!confirm(`「${q.genre}」（正解数 ${q.answerCount}）で出題します。よろしいですか？`)) return;
+  gameState.round.q={id:q.id, genre:q.genre, text:q.text, imgs:q.imgs||[], answers:parseAnswers(q.answersText), answerCount:Number(q.answerCount)};
+  gameState.round.predictions={};
+  gameState.usedQids.push(qid);
+  gameState.phase='predict';
+  saveGameState(); broadcastStateSync(); renderHost();
+  markQuestionDone(qid);
+}
+/** 管理画面の「出題済み」を付ける。管理画面側の編集を上書きしないよう、最新データを読み直して該当問題だけ更新 */
+async function markQuestionDone(qid){
+  try{
+    const latest=await idbGet(); if(!latest || !Array.isArray(latest.questions)) return;
+    const q=latest.questions.find(x=>x.id===qid); if(!q || q.done) return;
+    q.done=true; await idbSet(latest);
+  }catch(e){ console.error(e); }
+}
+function validateResultInput(){
+  const r=gameState.round;
+  if(appData.mode==='time' && r.resultGiveUp) return {ok:true, value:MAX_SEC};
+  const chk=validateNumber(r.resultDraft, appData.mode, r.q.answerCount);
+  if(!chk.ok && !chk.msg) return {ok:false, msg:appData.mode==='time'?'秒数を入力するか「答えきれない」を選んでください':'正解数を入力してください'};
+  return chk;
+}
+function confirmResult(){
+  const r=gameState.round;
+  const chk=validateResultInput();
+  if(!chk.ok){ alert(chk.msg); return; }
+  r.result=chk.value;
+  if(gameState.timer.running){ gameState.timer.baseMs=timerElapsed(); gameState.timer.running=false; }
+  gameState.phase='reveal_answers';
+  saveGameState(); broadcastStateSync(); renderHost();
+}
+function finishRound(){
+  const r=gameState.round; if(!r || r.result==null) return;
+  gameState.history.push({answererId:r.answererId, q:{id:r.q.id, genre:r.q.genre, answerCount:r.q.answerCount}, result:r.result, predictions:r.predictions, scores:computeScores(r)});
+  gameState.round=null;
+  if(isLastRound()) goFinal();
+  else { enterLottery(); saveGameState(); broadcastStateSync(); renderHost(); }
+}
+function goFinal(){
+  if(gameState.round && gameState.round.result!=null && gameState.phase==='reveal_predictions'){ finishRound(); return; }
+  if(gameState.phase==='lottery' && gameState.lottery.drawnId){
+    // 引いた直後に結果発表へ進む場合、その抽選は無効にする
+    gameState.answererOrder=gameState.answererOrder.filter(x=>x!==gameState.lottery.drawnId);
+  }
+  gameState.round=null;
+  gameState.finalRanks=computeRanks();
+  gameState.finalStep=-1;
+  gameState.phase='final';
+  saveGameState(); broadcastStateSync(); renderHost();
+}
+function advanceFinal(){
+  const steps=finalSteps();
+  if(gameState.finalStep>=steps.length-1) return;
+  gameState.finalStep++;
+  saveGameState(); broadcastStateSync(); renderHost();
+  if(gameState.finalStep>=steps.length-1){
+    // 全順位を発表し終えたらゲーム終了：次回起動は新規になるよう進行データを消す
+    localStorage.removeItem(LS_STATE); localStorage.removeItem(LS_ROOM);
+  }
+}
+function restartGame(){
+  const old=gameState.players;
+  gameState=freshGameState();
+  Object.entries(old).forEach(([id,p])=>{ gameState.players[id]={name:p.name, conn:p.conn, connected:p.connected}; });
+  lotteryAnimating=false;
+  saveGameState(); broadcastStateSync(); renderHost();
+}
+
+/* ---- render ---- */
+function renderHostSafe(){
+  if(lotteryAnimating) return;
+  // 結果入力中に参加者の接続などで再描画されると入力欄のフォーカスが外れるので、その間は描画しない
+  const ae=document.activeElement;
+  if(ae && ae.id==='result-input') return;
+  renderHost();
+}
+function renderHost(){
+  if(!gameState) return;
+  const root=document.getElementById('host-root');
+  let body='';
+  try{
+    switch(gameState.phase){
+      case 'lobby': body=renderLobby(); break;
+      case 'rule': body=renderRule(); break;
+      case 'lottery': body=renderLottery(); break;
+      case 'genre': body=renderGenre(); break;
+      case 'predict': body=renderPredict(); break;
+      case 'question': body=renderQuestion(); break;
+      case 'reveal_answers': body=renderRevealAnswers(); break;
+      case 'reveal_predictions': body=renderRevealPredictions(); break;
+      case 'final': body=renderFinal(); break;
+    }
+  }catch(e){ console.error(e); body=`<div class="host-body"><div class="host-msg">表示エラー：${escapeHtml(e.message)}</div></div>`; }
+  const rl=(['lottery','genre','predict','question','reveal_answers','reveal_predictions'].includes(gameState.phase) && roundNo()) ? `<span class="host-round">${roundLabel()}</span>` : '';
+  root.innerHTML = `<div class="host-topbar"><span><span class="host-title">${escapeHtml(appData.title||'多答クイズ')}</span>${rl}</span>
+    <div class="host-topbar-actions">
+      <button data-action="open-admin" class="btn-mini">⚙ 管理画面</button>
+      <button data-action="restart-all" class="btn-mini">↺ 最初から</button>
+      <button data-action="reset-room" class="btn-mini">🆕 新しい部屋を作り直す</button>
+    </div></div><div class="host-body">${body}</div>`;
+  if(gameState.phase==='lobby') renderQR();
+  if(gameState.phase==='question') tickTimer();
+}
+function playerChips(opts){
+  opts=opts||{};
+  const ids=Object.keys(gameState.players);
+  if(!ids.length) return '<span class="muted">まだ誰も参加していません</span>';
+  return ids.map(id=>{
+    const p=gameState.players[id];
+    let cls='chip'; if(!p.connected) cls+=' chip-off';
+    if(opts.doneSet && opts.doneSet.has(id)) cls+=' chip-done';
+    if(opts.answererId===id) cls+=' chip-answerer';
+    const mark = opts.answererId===id ? '🎤 ' : (opts.doneSet ? (opts.doneSet.has(id)?'✓ ':'… ') : '');
+    return `<span class="${cls}">${mark}${escapeHtml(p.name)}${p.connected?'':'（切断中）'}${opts.removable?`<button class="chip-x" data-action="remove-player" data-arg="${id}" title="外す">✕</button>`:''}</span>`;
+  }).join('');
+}
+function renderLobby(){
+  const n=Object.keys(gameState.players).length;
+  const qn=includedQs().length;
+  return `<h2>参加者募集中</h2>
+    <div id="qrcode-box"></div>
+    <p class="join-url" id="join-url-text">${myHostId?'':'部屋を準備しています…'}</p>
+    <p class="info-line">部屋番号：<strong>${myHostId||'-'}</strong>　参加人数：<strong>${n}</strong>人　出題できる問題：<strong>${qn}</strong>問</p>
+    <div class="player-chips">${playerChips({removable:true})}</div>
+    ${qn<n?`<div class="host-msg">⚠ 出題する問題（${qn}問）が参加者（${n}人）より少ないため、このままでは開始できません。</div>`:''}
+    <div class="host-actions"><button data-action="start-game" class="btn-primary">▶ ゲーム開始</button></div>
+    <p class="host-note">形式：${MODE_LABEL[appData.mode]}</p>`;
+}
+function renderQR(){
+  const box=document.getElementById('qrcode-box'); if(!box || !myHostId) return;
+  box.innerHTML='';
+  const url = location.href.split('?')[0].split('#')[0] + '?room=' + myHostId;
+  new QRCode(box, {text:url, width:240, height:240});
+  const t=document.getElementById('join-url-text'); if(t) t.textContent=url;
+}
+function renderRule(){
+  const slides=appData.ruleSlides;
+  const si=Math.min(gameState.ruleSlideIndex, slides.length-1), slide=slides[si];
+  const ri=Math.min(gameState.ruleRevealIndex, slide.groups.length-1);
+  const isFinal = si===slides.length-1 && ri===slide.groups.length-1;
+  return `<h2>ルール説明${slides.length>1?` <span class="muted" style="font-size:15px">(${si+1}/${slides.length})</span>`:''}</h2>
+    <div class="rule-display">${slide.img?`<img class="rule-img" src="${slide.img}">`:''}${slide.groups.map((g,gi)=>`<div style="${gi<=ri?'':'visibility:hidden'}">${g||''}</div>`).join('')}</div>
+    <div class="host-actions">
+      <button data-action="rule-prev" class="host-btn" ${si===0&&ri===0?'disabled':''}>◀ 前へ</button>
+      <button data-action="rule-next" class="btn-primary">${isFinal?'▶ 解答者を決める':'次へ ▶'} (Enter)</button>
+    </div>`;
+}
+
+/* ---- 多答みくじ ---- */
+function omikujiHTML(name, stageClass){
+  const len=Math.max(1, [...(name||'')].length);
+  const fs=Math.max(11, Math.min(26, Math.floor(200/len)));
+  const faces=[0,1,2,3,4,5].map(i=>`<div class="omi-face" style="transform:rotateY(${i*60}deg) translateZ(76px)"><span>多答みくじ</span></div>`).join('');
+  return `<div class="omi-stage ${stageClass||''}" id="omi-stage">
+    <div class="omi-stick"><span class="omi-name" style="font-size:${fs}px">${escapeHtml(name||'')}</span></div>
+    <div class="omi-tilt"><div class="omi-prism">${faces}<div class="omi-cap top"></div><div class="omi-cap bottom"></div></div></div>
+  </div>`;
+}
+function renderLottery(){
+  const L=gameState.lottery;
+  const remain=unchosenIds(), pool=drawPool(), qLeft=remainingQs().length;
+  const chips=`<div class="player-chips">${Object.keys(gameState.players).map(id=>{
+    const p=gameState.players[id]; const done=gameState.answererOrder.includes(id) && id!==L.drawnId;
+    return `<span class="chip ${done?'chip-off':''} ${p.connected?'':'chip-off'}">${done?'済 ':''}${escapeHtml(p.name)}${p.connected?'':'（切断中）'}</span>`;
+  }).join('')}</div>`;
+  if(!L.drawnId){
+    let warn='', canGo=true;
+    if(!qLeft){ warn=`<div class="host-msg">出題できる問題が残っていません。最終結果発表へ進んでください。</div>`; canGo=false; }
+    else if(!pool.length){ warn=`<div class="host-msg">まだ解答者になっていない人（${remain.map(pname).join('、')}）が全員切断中です。再接続を待つか、最終結果発表へ進んでください。</div>`; canGo=false; }
+    return `<h2>次の解答者は…？</h2>
+      ${omikujiHTML('', '')}
+      ${warn}
+      <div class="host-actions">
+        <button data-action="draw" class="btn-primary" ${canGo?'':'disabled'}>🎋 多答みくじを引く (Enter)</button>
+        ${canGo?'':'<button data-action="go-final" class="btn-danger">🏆 最終結果発表へ</button>'}
+      </div>
+      <p class="host-note">まだ解答者になっていない人：${remain.length}人（抽選対象＝接続中の${pool.length}人）</p>
+      ${chips}`;
+  }
+  const name=pname(L.drawnId);
+  return `<h2>次の解答者は…？</h2>
+    ${omikujiHTML(name, L.animDone?'st-final':'')}
+    <div class="omi-result ${L.animDone?'show':''}" id="omi-result">${L.animDone?`<strong>${escapeHtml(name)}</strong> さん！`:''}</div>
+    <div class="host-actions" id="omi-actions" style="${L.animDone?'':'visibility:hidden'}">
+      <button data-action="redraw" class="host-btn">↺ 引き直す</button>
+      <button data-action="to-genre" class="btn-primary">▶ ジャンル選択へ (Enter)</button>
+    </div>`;
+}
+function playLotteryAnimation(){
+  lotteryAnimating=true;
+  renderHost();
+  const stage=document.getElementById('omi-stage');
+  const done=()=>{
+    if(!lotteryAnimating) return;
+    lotteryAnimating=false;
+    gameState.lottery.animDone=true;
+    saveGameState(); broadcastStateSync(); renderHost();
+  };
+  const set=cls=>{ if(stage){ stage.className='omi-stage '+cls; } };
+  try{
+    // 揺らす → 逆さにする → 逆さで揺らす → 棒が出る → 名前を見せる
+    const steps=[['st-shake',0],['st-flip',1300],['st-inv',2000],['st-drop',3100],['st-reveal',4100]];
+    steps.forEach(([cls,t])=>setTimeout(()=>{ try{ set(cls); }catch(e){} }, t));
+    setTimeout(()=>{
+      const res=document.getElementById('omi-result');
+      if(res){ res.innerHTML=`<strong>${escapeHtml(pname(gameState.lottery.drawnId))}</strong> さん！`; res.classList.add('show'); }
+    }, 4900);
+    setTimeout(done, 5600);
+  }catch(e){ console.error(e); }
+  setTimeout(done, 9000); // 安全装置
+}
+
+function renderGenre(){
+  const r=gameState.round;
+  const qs=includedQs();
+  return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
+    <h2>ジャンルを選んでください</h2>
+    <div class="genre-board">${qs.map(q=>{
+      const used=gameState.usedQids.includes(q.id);
+      return `<button class="genre-card" data-action="pick-genre" data-arg="${q.id}" ${used?'disabled':''}>
+        ${used?'<span class="gc-used">出題済み</span>':''}${escapeHtml(q.genre)}<span class="gc-count">正解数 ${escapeHtml(q.answerCount)}</span></button>`;
+    }).join('')}</div>
+    <div class="host-actions"><button data-action="back-to-lottery-result" class="host-btn">◀ 抽選結果に戻る</button></div>`;
+}
+function qHeaderHTML(q){
+  return `<div class="genre-title">${escapeHtml(q.genre)}</div>
+    <div><span class="count-badge">正解数 ${q.answerCount}</span><span class="mode-badge">${MODE_LABEL[appData.mode]}</span></div>`;
+}
+function renderPredict(){
+  const r=gameState.round;
+  const predictors=Object.keys(gameState.players).filter(id=>id!==r.answererId);
+  const doneSet=new Set(Object.keys(r.predictions));
+  const cnt=predictors.filter(id=>doneSet.has(id)).length;
+  return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
+    ${qHeaderHTML(r.q)}
+    <h2 style="margin-top:26px">📱 予想受付中</h2>
+    <p class="info-line">解答者以外の方は、スマホに出ている問題を見て<br>「${appData.mode==='time'?'何秒で全部答えられるか':MAX_SEC+'秒でいくつ答えられるか'}」を予想してください</p>
+    <p class="info-line">提出済み <strong style="font-size:30px">${cnt}</strong> / ${predictors.length}人</p>
+    <div class="player-chips">${playerChips({doneSet, answererId:r.answererId})}</div>
+    <div class="host-actions"><button data-action="close-predict" class="btn-danger">⏹ 予想を締め切る</button></div>`;
+}
+function renderQuestion(){
+  const r=gameState.round, t=gameState.timer;
+  const el=timerElapsed(), ended=el>=MAX_MS;
+  const label=appData.mode==='time'?'経過時間（最大45秒）':'残り時間';
+  let entry='';
+  if(appData.mode==='time'){
+    entry=`<div class="re-row">結果：
+      <input type="text" id="result-input" inputmode="numeric" value="${escapeHtml(r.resultDraft)}" ${r.resultGiveUp?'disabled':''}> 秒で全部正解
+      <button data-action="toggle-giveup" class="host-btn" style="${r.resultGiveUp?'background:#7a4dd8;border-color:#b79cff':''}">${r.resultGiveUp?'☑':'☐'} 答えきれない（45秒）</button></div>`;
+  } else {
+    entry=`<div class="re-row">結果：<input type="text" id="result-input" inputmode="numeric" value="${escapeHtml(r.resultDraft)}"> 個 正解（0〜${r.q.answerCount}）</div>`;
+  }
+  return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
+    ${qHeaderHTML(r.q)}
+    <div class="q-text-big">${escapeHtml(r.q.text)}</div>
+    ${renderImgList(r.q.imgs,'q-img')}
+    <div class="timer-wrap">
+      <div class="timer-label">${label}</div>
+      <div class="big-timer ${ended?'timeup':''}" id="big-timer">${(timerDisplayMs()/1000).toFixed(1)}<span class="unit">秒</span></div>
+      <div class="timer-bar-outer"><div class="timer-bar-inner" id="timer-bar"></div></div>
+      ${ended?'<div class="timeup-label">TIME UP!</div>':''}
+      <div class="host-actions">
+        <button data-action="timer-start" class="btn-primary" ${t.running||ended?'disabled':''}>▶ スタート</button>
+        <button data-action="timer-stop" class="host-btn" ${t.running?'':'disabled'}>⏸ ストップ</button>
+        <button data-action="timer-reset" class="host-btn" ${t.running?'disabled':''}>↺ リセット</button>
+      </div>
+    </div>
+    <div class="result-entry">
+      ${entry}
+      <div class="re-err" id="result-err"></div>
+      <div class="host-actions" style="margin-top:8px"><button data-action="confirm-result" class="btn-primary">🎉 結果発表へ</button></div>
+      <p class="host-note">正解判定は画面外で行い、結果を手入力してください（タイマーの値は結果に使いません）</p>
+    </div>`;
+}
+function resultText(r){
+  if(appData.mode==='time') return r.result>=MAX_SEC ? `答えきれず…（${MAX_SEC}秒）` : `${r.result}秒で全問正解！`;
+  return `${r.result}個 正解！<span style="font-size:24px;color:#cfd6ea">（全${r.q.answerCount}個中）</span>`;
+}
+function renderRevealAnswers(){
+  const r=gameState.round;
+  return `${qHeaderHTML(r.q)}
+    <h2 style="margin-top:22px">正解一覧</h2>
+    <div class="answer-grid">${r.q.answers.map((a,i)=>`<div class="answer-chip"><span class="an">${i+1}</span>${escapeHtml(a)}</div>`).join('')}</div>
+    <div class="answerer-line">解答者 <strong>${escapeHtml(pname(r.answererId))}</strong> さんの結果</div>
+    <div class="result-big">${resultText(r)}</div>
+    <div class="host-actions">
+      <button data-action="back-to-question" class="host-btn">◀ 結果を修正</button>
+      <button data-action="show-predictions" class="btn-primary">▶ 予想を発表 (Enter)</button>
+    </div>`;
+}
+function renderRevealPredictions(){
+  const r=gameState.round;
+  const scores=computeScores(r);
+  const predictors=Object.keys(gameState.players).filter(id=>id!==r.answererId);
+  Object.keys(r.predictions).forEach(id=>{ if(id!==r.answererId && !predictors.includes(id)) predictors.push(id); });
+  const submitted=predictors.filter(id=>r.predictions[id]!=null)
+    .sort((a,b)=>Math.abs(r.predictions[a]-r.result)-Math.abs(r.predictions[b]-r.result) || r.predictions[a]-r.predictions[b]);
+  const missing=predictors.filter(id=>r.predictions[id]==null);
+  const rows=submitted.map((id,i)=>{
+    const v=r.predictions[id], s=scores[id]||0;
+    const cls = v===r.result ? 'pita' : (s===1 ? 'near' : 'none');
+    const label = v===r.result ? '🎯 ピタリ！ +3点' : (s===1 ? '📍 ニアピン +1点' : '0点');
+    return `<div class="pred-row ${cls}" style="animation-delay:${i*0.05}s"><span class="pn">${escapeHtml(pname(id))}</span><span class="pv">${formatValue(v, appData.mode)}</span><span class="pd">${v===r.result?'':'差 '+Math.abs(v-r.result)}</span><span class="pp">${label}</span></div>`;
+  }).concat(missing.map(id=>`<div class="pred-row none"><span class="pn">${escapeHtml(pname(id))}</span><span class="pv">未提出</span><span class="pd"></span><span class="pp">0点</span></div>`)).join('');
+  const last=isLastRound();
+  return `${qHeaderHTML(r.q)}
+    <div class="result-big" style="font-size:34px">結果：${resultText(r)}</div>
+    <h2>みんなの予想</h2>
+    <div class="pred-list">${rows||'<p class="muted">予想した人がいません</p>'}</div>
+    <div class="host-actions">
+      <button data-action="back-to-answers" class="host-btn">◀ 戻る</button>
+      ${last?'<button data-action="next-round" class="btn-danger">🏆 最終結果発表へ (Enter)</button>':'<button data-action="next-round" class="btn-primary">▶ 次の解答者を選ぶ (Enter)</button>'}
+    </div>`;
+}
+function renderFinal(){
+  const steps=finalSteps();
+  const k=gameState.finalStep;
+  const nextStep=steps[k+1];
+  let spot='';
+  if(k<0){
+    spot=`<div class="final-spot"><div class="fs-rank">🏆 最終結果発表 🏆</div><div class="fs-pt" style="margin-top:10px">全${gameState.history.length}問の合計点で順位を発表します</div></div>`;
+  } else {
+    const cur=steps[k];
+    if(cur.kind==='top'){
+      spot=`<div class="final-spot" key="${k}"><div class="fs-rank">${cur.rank===1?'👑 ':''}第${cur.rank}位${cur.rank===1?' 👑':''}</div>
+        <div class="fs-names">${cur.rows.map(x=>escapeHtml(x.name)).join('<br>')}</div><div class="fs-pt">${cur.rows[0].total}点</div></div>`;
+    }
+  }
+  const revealed=steps.slice(0,k+1).flatMap(s=>s.rows).sort((a,b)=>a.rank-b.rank);
+  const table=revealed.length?`<div class="rank-table">${revealed.map(x=>`<div class="rank-row r${x.rank}"><span class="rr">${x.rank}位</span><span class="rn">${escapeHtml(x.name)}</span><span class="rt">${x.total}点</span></div>`).join('')}</div>`:'';
+  const btn = nextStep ? `<button data-action="final-next" class="btn-primary">▶ ${nextStep.label}を発表 (Enter)</button>` : '<p class="info-line">🎉 おめでとうございます！ 🎉</p>';
+  return `${spot}${table}<div class="host-actions">${btn}</div>`;
+}
+
+/* ================= PARTICIPANT ================= */
+let myPlayerId=null, myName='', myConn=null, myPeer=null, lastPayload=null, removedByHost=false;
+let pDraft={key:null, text:'', giveUp:false, editing:false};
+
+function initParticipant(){
+  requestWakeLock();
+  myPlayerId = sessionStorage.getItem(SS_PID) || uid('p');
+  sessionStorage.setItem(SS_PID, myPlayerId);
+  myName = sessionStorage.getItem(SS_NAME) || '';
+  const roomId = params.get('room');
+  renderConnecting();
+  myPeer=new Peer();
+  myPeer.on('open', ()=>connectToHost(roomId));
+  myPeer.on('disconnected', ()=>{ try{ myPeer.reconnect(); }catch(e){} });
+  myPeer.on('error', err=>{ console.error(err); });
+}
+function connectToHost(roomId){
+  let retryTimer=null;
+  const retry=()=>{ if(removedByHost) return; clearTimeout(retryTimer); retryTimer=setTimeout(tryConnect, 3000); };
+  function tryConnect(){
+    if(removedByHost) return;
+    try{
+      const conn = myPeer.connect(roomId, {reliable:true});
+      myConn=conn;
+      conn.on('open', ()=>{ if(myName) sendJoin(); else renderNicknameForm(''); });
+      conn.on('data', handleHostMessage);
+      conn.on('close', ()=>{ if(myConn===conn){ renderConnecting(); retry(); } });
+      conn.on('error', ()=>{ if(myConn===conn) retry(); });
+      // 相手が見つからない時は open も close も来ないことがあるので、一定時間で再試行
+      setTimeout(()=>{ if(myConn===conn && !conn.open){ try{conn.close();}catch(e){} retry(); } }, 8000);
+    }catch(e){ retry(); }
+  }
+  tryConnect();
+}
+function sendJoin(){ if(myConn&&myConn.open) myConn.send({type:'join', playerId:myPlayerId, name:myName}); }
+function renderConnecting(){
+  document.getElementById('participant-root').innerHTML = `<div class="p-center"><div class="spinner"></div><p>ホストに接続しています…</p><p class="muted" style="font-size:13px">つながらない場合はそのまま少しお待ちください（自動で再接続します）</p></div>`;
+}
+function renderNicknameForm(err){
+  document.getElementById('participant-root').innerHTML = `<div class="p-center">
+    <h2>ニックネームを入力</h2>
+    ${err?`<p style="color:var(--bad)">${escapeHtml(err)}</p>`:''}
+    <input type="text" id="nickname-input" maxlength="12" placeholder="ニックネーム（12文字まで）" value="${escapeHtml(myName)}"><br>
+    <button id="btn-join">参加する</button>
+    <p class="muted" style="font-size:13px">途中で画面を閉じてしまった場合は、同じニックネームで入り直すと復帰できます</p>
+  </div>`;
+  document.getElementById('btn-join').addEventListener('click', ()=>{
+    const v=document.getElementById('nickname-input').value.trim();
+    if(!v){ alert('ニックネームを入力してください'); return; }
+    myName=v; sessionStorage.setItem(SS_NAME,v);
+    sendJoin();
+  });
+}
+function handleHostMessage(data){
+  if(!data) return;
+  if(data.type==='state_sync'){ lastPayload=data.payload; renderParticipant(); }
+  else if(data.type==='adopt_pid'){ myPlayerId=data.playerId; sessionStorage.setItem(SS_PID, myPlayerId); sendJoin(); }
+  else if(data.type==='name_taken'){ myName=''; sessionStorage.removeItem(SS_NAME); renderNicknameForm('そのニックネームは使われています。別のニックネームにしてください'); }
+  else if(data.type==='removed'){
+    removedByHost=true; sessionStorage.removeItem(SS_NAME); sessionStorage.removeItem(SS_PID);
+    document.getElementById('participant-root').innerHTML=`<div class="p-center"><h2>参加者から外れました</h2><p>もう一度参加する場合はQRコードを読み直してください。</p></div>`;
+  }
+}
+function waitScreen(title, sub){ return `<div class="p-center"><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>`; }
+function myPredLine(pl){ return pl.myPrediction!=null ? `<p>あなたの予想：<strong>${formatValue(pl.myPrediction, pl.mode)}</strong></p>` : ''; }
+function renderParticipant(){
+  const root=document.getElementById('participant-root');
+  const pl=lastPayload; if(!pl) return;
+  document.title=pl.title||'多答クイズ';
+  const see='ホストの画面をご覧ください';
+  switch(pl.phase){
+    case 'lobby': root.innerHTML=waitScreen(escapeHtml(pl.title||''), `${escapeHtml(pl.name)}さん、開始までお待ちください。`); break;
+    case 'lottery':
+    case 'genre':
+      root.innerHTML = pl.isAnswerer
+        ? waitScreen('🎤 あなたが解答者です！', 'ホストの画面を見て、ジャンルを選んでください。')
+        : waitScreen(see, pl.phase==='lottery'?'次の解答者を抽選中です':'解答者がジャンルを選んでいます'); break;
+    case 'predict': renderPredictParticipant(pl); break;
+    case 'question':
+      root.innerHTML = pl.isAnswerer ? waitScreen('🎤 解答者です', 'ホストの画面を見て解答してください！') : waitScreen(see, '')+`<div class="p-center" style="padding-top:0">${myPredLine(pl)}</div>`; break;
+    case 'reveal_answers':
+      root.innerHTML = waitScreen(see, '結果発表中です')+(pl.isAnswerer?'':`<div class="p-center" style="padding-top:0">${myPredLine(pl)}</div>`); break;
+    case 'reveal_predictions':
+      if(pl.isAnswerer){ root.innerHTML=waitScreen('解答おつかれさまでした！', '（解答者はこの問題の得点はありません）'); break; }
+      {
+        const e=pl.earned||0;
+        const cls=e===3?'pita':(e===1?'near':'zero');
+        const label=e===3?'🎯 ピタリ！':(e===1?'📍 ニアピン！':'');
+        root.innerHTML=`<div class="p-center"><p>この問題の獲得点</p><div class="p-earned ${cls}">${label?label+'<br>':''}${e}点</div>${myPredLine(pl)||'<p class="muted">予想未提出</p>'}<p class="muted" style="font-size:13px">合計点は最後に発表されます</p></div>`;
+      }
+      break;
+    case 'final':
+      root.innerHTML = pl.allRevealed && pl.myRank!=null
+        ? `<div class="p-center"><h2>最終結果</h2><div class="p-earned ${pl.myRank===1?'pita':'near'}">${pl.myRank}位</div><p>合計 <strong>${pl.myTotal}</strong>点</p><p>ご参加ありがとうございました！</p></div>`
+        : waitScreen('🏆 最終結果発表中', see); break;
+    default: root.innerHTML=waitScreen(see, '');
+  }
+}
+function renderPredictParticipant(pl){
+  const root=document.getElementById('participant-root');
+  if(pl.isAnswerer){ root.innerHTML=waitScreen('🎤 あなたが解答者です', 'ほかの人が予想中です。問題はまだ見られません。ホストの画面でお待ちください。'); return; }
+  if(pDraft.key!==pl.roundKey){ pDraft={key:pl.roundKey, text:'', giveUp:false, editing:false}; }
+  const q=pl.q||{};
+  const header=`<div class="p-card">
+      <div class="p-genre">${escapeHtml(q.genre)}</div>
+      <div class="p-count">正解数 ${q.answerCount}</div>
+      <div class="p-q-text">${escapeHtml(q.text)}</div>
+      ${renderImgList(q.imgs,'p-q-img')}
+    </div>`;
+  if(pl.myPrediction!=null && !pDraft.editing){
+    root.innerHTML = header + `<div class="p-card" style="text-align:center">
+      <div>予想を送信しました</div>
+      <div class="p-sent">${formatValue(pl.myPrediction, pl.mode)}</div>
+      <button class="p-btn-sub" id="btn-edit-pred">予想を変更する</button>
+      <p class="muted" style="font-size:13px">締め切りまでは変更できます</p></div>`;
+    document.getElementById('btn-edit-pred').addEventListener('click', ()=>{
+      pDraft.editing=true;
+      if(pl.mode==='time' && pl.myPrediction>=MAX_SEC){ pDraft.giveUp=true; pDraft.text=''; } else { pDraft.giveUp=false; pDraft.text=String(pl.myPrediction); }
+      renderPredictParticipant(pl);
+    });
+    return;
+  }
+  const isTime=pl.mode==='time';
+  root.innerHTML = header + `<div class="p-card" style="text-align:center">
+      <div class="p-mode">${isTime?'解答者は何秒で全部答えられる？':`解答者は${MAX_SEC}秒でいくつ答えられる？`}</div>
+      <div class="p-input-row"><input type="text" id="pred-input" inputmode="numeric" autocomplete="off" value="${escapeHtml(pDraft.text)}" ${pDraft.giveUp?'disabled':''}><span class="unit">${isTime?'秒':'個'}</span></div>
+      <div class="muted" style="font-size:13px">${isTime?`1〜${MAX_SEC-1}の整数`:`0〜${q.answerCount}の整数`}</div>
+      <div class="p-warn" id="pred-warn"></div>
+      ${isTime?`<button class="p-giveup ${pDraft.giveUp?'on':''}" id="btn-giveup">${pDraft.giveUp?'☑':'☐'} 答えきれない（${MAX_SEC}秒）</button>`:''}
+      <button class="p-submit" id="btn-submit-pred" disabled>この予想で送信</button>
+      ${pDraft.editing?'<button class="p-btn-sub" id="btn-cancel-edit" style="margin-top:10px">変更をやめる</button>':''}
+    </div>`;
+  const inp=document.getElementById('pred-input'), warn=document.getElementById('pred-warn'), btn=document.getElementById('btn-submit-pred');
+  const check=()=>{
+    if(isTime && pDraft.giveUp){ warn.textContent=''; inp.classList.remove('invalid'); btn.disabled=false; return {ok:true}; }
+    const c=validateNumber(pDraft.text, pl.mode, q.answerCount);
+    warn.textContent=c.ok?'':c.msg;
+    inp.classList.toggle('invalid', !c.ok && !!c.msg);
+    btn.disabled=!c.ok;
+    return c;
+  };
+  inp.addEventListener('input', ()=>{ pDraft.text=inp.value; check(); });
+  check();
+  if(isTime){
+    document.getElementById('btn-giveup').addEventListener('click', ()=>{ pDraft.giveUp=!pDraft.giveUp; renderPredictParticipant(pl); });
+  }
+  const cancel=document.getElementById('btn-cancel-edit');
+  if(cancel) cancel.addEventListener('click', ()=>{ pDraft.editing=false; renderPredictParticipant(pl); });
+  btn.addEventListener('click', ()=>{
+    const c=check(); if(!c.ok) return;
+    const giveUp=isTime && pDraft.giveUp;
+    const label=giveUp?formatValue(MAX_SEC,'time'):formatValue(c.value, pl.mode);
+    if(!confirm(`「${label}」で送信します。よろしいですか？`)) return;
+    if(!(myConn&&myConn.open)){ alert('ホストとの接続が切れています。少し待ってからもう一度送信してください。'); return; }
+    myConn.send({type:'predict', playerId:myPlayerId, value:giveUp?null:c.value, giveUp});
+    pDraft.editing=false;
+  });
+  if(!pDraft.giveUp && !pDraft.editing) setTimeout(()=>{ try{ inp.focus(); }catch(e){} }, 50);
+}
+</script>
+</body>
+</html>
