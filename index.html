@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -61,8 +60,9 @@ textarea{width:100%; font-family:inherit;}
 .confirm-list{padding-left:22px;}
 .confirm-list li{margin:4px 0;}
 .confirm-err{color:var(--bad); font-size:13px;}
-.mode-radio{display:flex; gap:18px; flex-wrap:wrap;}
-.mode-radio label{display:flex; align-items:center; gap:6px; font-size:15px; background:#f5f7fd; border:1px solid #d6dcef; padding:8px 12px; border-radius:8px;}
+.q-mode{font-size:12px; color:#fff; border-radius:10px; padding:2px 8px;}
+.q-mode.m-time{background:#2f7de0;} .q-mode.m-count{background:#e0782f;}
+.f-mode-select{font-size:15px; padding:8px;}
 
 /* ---- modal ---- */
 .text-modal{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:997; padding:16px;}
@@ -113,13 +113,25 @@ textarea{width:100%; font-family:inherit;}
 .info-line{font-size:20px; color:#cfd6ea; margin:6px 0;}
 .genre-title{font-size:40px; font-weight:bold; color:#ffd166; margin:8px 0;}
 .count-badge{display:inline-block; background:#ffd166; color:#222; font-weight:bold; font-size:22px; padding:4px 16px; border-radius:20px;}
-.mode-badge{display:inline-block; background:#3a6df0; color:#fff; font-size:18px; padding:4px 14px; border-radius:20px; margin-left:8px;}
+.mode-badge{display:inline-block; background:#2f7de0; color:#fff; font-size:18px; padding:4px 14px; border-radius:20px; margin-left:8px;}
+.mode-badge.m-count{background:#e0782f;}
 .answerer-line{font-size:24px; margin:8px 0;}
 .answerer-line strong{color:#c9a8ff; font-size:30px;}
 
 /* genre board */
-.genre-board{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; margin-top:18px;}
-.genre-card{position:relative; background:linear-gradient(160deg,#2f3a5c,#232838); border:2px solid #4a5a8a; border-radius:12px; padding:22px 12px; color:#fff; font-size:24px; font-weight:bold; transition:transform .1s;}
+.genre-sections{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:18px; text-align:left;}
+.genre-sections.single{grid-template-columns:1fr;}
+.genre-section{border-radius:14px; padding:14px; border:2px solid;}
+.genre-section.m-time{background:rgba(47,125,224,.10); border-color:#2f7de0;}
+.genre-section.m-count{background:rgba(224,120,47,.10); border-color:#e0782f;}
+.genre-section-title{font-size:24px; font-weight:bold; margin-bottom:4px;}
+.genre-section.m-time .genre-section-title{color:#8fc2ff;}
+.genre-section.m-count .genre-section-title{color:#ffb98a;}
+.genre-section-sub{color:#9aa; font-size:14px; margin-bottom:12px;}
+.genre-board{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; text-align:center;}
+.genre-card{position:relative; border:2px solid; border-radius:12px; padding:22px 12px; color:#fff; font-size:24px; font-weight:bold; transition:transform .1s;}
+.genre-card.m-time{background:linear-gradient(160deg,#1f4f8f,#1b2c4a); border-color:#3f86e8;}
+.genre-card.m-count{background:linear-gradient(160deg,#8a4a1c,#3f2716); border-color:#e8883f;}
 .genre-card:hover:not(:disabled){transform:translateY(-3px); border-color:#ffd166;}
 .genre-card .gc-count{display:block; margin-top:8px; font-size:17px; color:#ffd166; font-weight:normal;}
 .genre-card:disabled{background:#2a2c33; border-color:#3a3d47; color:#666; cursor:not-allowed;}
@@ -251,11 +263,7 @@ textarea{width:100%; font-family:inherit;}
     <section class="card">
       <h2>基本設定</h2>
       <label>タイトル<br><input id="f-title" type="text" style="width:100%"></label>
-      <h3>クイズの形式（ゲーム全体で共通）</h3>
-      <div class="mode-radio">
-        <label><input type="radio" name="f-mode" value="time"> ⏱ 何秒で全部答えられるか（0秒からカウントアップ・最大45秒）</label>
-        <label><input type="radio" name="f-mode" value="count"> 🔢 45秒でいくつ答えられるか（45秒からカウントダウン）</label>
-      </div>
+      <p class="muted">クイズの形式（⏱ 45秒で全部答えられるか／🔢 45秒でいくつ答えられるか）は問題ごとに設定します。制限時間はどちらも45秒固定です。</p>
     </section>
     <section class="card">
       <h2>ルール説明</h2>
@@ -327,7 +335,11 @@ const LS_ROOM='tatou_room', LS_STATE='tatou_gamestate';
 const SS_PID='tatou_pid', SS_NAME='tatou_name';
 const params=new URLSearchParams(location.search);
 const MODE = params.get('mode')==='admin' ? 'admin' : (params.has('room') ? 'participant' : 'host');
-const MODE_LABEL={time:'何秒で全部答えられる？', count:MAX_SEC+'秒でいくつ答えられる？'};
+const MODE_LABEL={time:MAX_SEC+'秒で全部答えられる？', count:MAX_SEC+'秒でいくつ答えられる？'};
+const MODE_ICON={time:'⏱', count:'🔢'};
+const MODE_DESC={time:'0秒からカウントアップ・最大'+MAX_SEC+'秒', count:MAX_SEC+'秒からカウントダウン'};
+function modeOf(q){ return q && q.mode==='count' ? 'count' : 'time'; }
+function modeBadge(q, cls){ const m=modeOf(q); return `<span class="${cls} m-${m}">${MODE_ICON[m]} ${MODE_LABEL[m]}</span>`; }
 
 /* ---------- utils ---------- */
 function uid(p){return (p||'id')+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
@@ -381,15 +393,21 @@ async function idbGet(){const db=await openDb();return new Promise((res,rej)=>{c
 async function idbSet(data){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,DATA_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
 
 /* ---------- data model ---------- */
-function defaultAppData(){return { title:'多答クイズ', mode:'time', ruleSlides:[{img:null, groups:['']}], questions:[] };}
-function makeQ(){return {id:uid('q'), genre:'', text:'', imgs:[], answersText:'', answerCount:'', include:true, done:false};}
+function defaultAppData(){return { title:'多答クイズ', ruleSlides:[{img:null, groups:['']}], questions:[] };}
+function makeQ(mode){return {id:uid('q'), genre:'', mode:mode==='count'?'count':'time', text:'', imgs:[], answersText:'', answerCount:'', include:true, done:false};}
 function mergeLoadedAppData(loaded){
   const d=defaultAppData();
   const m=Object.assign({}, d, loaded||{});
-  if(m.mode!=='time' && m.mode!=='count') m.mode='time';
+  // 旧データ（形式がゲーム全体で1つだった頃）は、その形式を各問題に引き継ぐ
+  const legacyMode = m.mode==='count' ? 'count' : 'time';
+  delete m.mode;
   if(!Array.isArray(m.ruleSlides) || !m.ruleSlides.length) m.ruleSlides=d.ruleSlides;
   m.ruleSlides.forEach(s=>{ if(!Array.isArray(s.groups)||!s.groups.length) s.groups=['']; });
-  m.questions=(Array.isArray(m.questions)?m.questions:[]).map(q=>Object.assign(makeQ(), q, {imgs:Array.isArray(q.imgs)?q.imgs:[]}));
+  m.questions=(Array.isArray(m.questions)?m.questions:[]).map(q=>{
+    const n=Object.assign(makeQ(), q, {imgs:Array.isArray(q.imgs)?q.imgs:[]});
+    n.mode = (q.mode==='time'||q.mode==='count') ? q.mode : legacyMode;
+    return n;
+  });
   return m;
 }
 let appData=defaultAppData();
@@ -460,9 +478,11 @@ let expandedIds=new Set();
 
 function initAdmin(){
   document.getElementById('f-title').addEventListener('input',e=>{appData.title=e.target.value;});
-  document.querySelectorAll('input[name=f-mode]').forEach(r=>r.addEventListener('change',e=>{ if(e.target.checked){ appData.mode=e.target.value; renderConfirm(); } }));
   attachRuleSlidesEvents();
-  document.getElementById('q-add').addEventListener('click',()=>{ const q=makeQ(); appData.questions.push(q); expandedIds.add(q.id); renderQList(); });
+  document.getElementById('q-add').addEventListener('click',()=>{
+    const last=appData.questions[appData.questions.length-1];
+    const q=makeQ(last?last.mode:'time'); appData.questions.push(q); expandedIds.add(q.id); renderQList();
+  });
   document.getElementById('btn-save').addEventListener('click', saveFromAdmin);
   document.getElementById('btn-open-host').addEventListener('click', async ()=>{ await saveFromAdmin(); window.open(location.pathname,'_blank'); });
   document.getElementById('btn-export').addEventListener('click', exportAppData);
@@ -476,7 +496,6 @@ function initAdmin(){
 }
 function refreshAdminUI(){
   document.getElementById('f-title').value=appData.title;
-  document.querySelectorAll('input[name=f-mode]').forEach(r=>{ r.checked=(r.value===appData.mode); });
   renderRuleSlidesEditor();
   renderQList();
 }
@@ -511,10 +530,11 @@ async function importAppDataFile(e){
 }
 function buildExportText(){
   const qs=includedQs();
-  const lines=[`${appData.title||'多答クイズ'}　出題一覧（形式：${MODE_LABEL[appData.mode]}）`, `全${qs.length}問`, ''];
+  const lines=[`${appData.title||'多答クイズ'}　出題一覧`, `全${qs.length}問（${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問／${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）`, ''];
   qs.forEach((q,i)=>{
     const answers=parseAnswers(q.answersText);
     lines.push(`【${i+1}】ジャンル：${q.genre||'(未入力)'}（正解数：${q.answerCount===''?'未入力':q.answerCount}）`);
+    lines.push(`形式：${MODE_LABEL[modeOf(q)]}`);
     lines.push(`問題：${(q.text||'').replace(/\n/g,' ')}${q.imgs&&q.imgs.length?'（画像あり）':''}`);
     lines.push(`正解：${answers.join('、')}`);
     lines.push('');
@@ -660,6 +680,7 @@ function buildQHeadInnerHTML(q, idx){
   return `<span class="drag-handle" title="ドラッグで並べ替え">⠿</span>
       <span class="q-idx">#${idx+1}</span>
       <span class="q-genre">${escapeHtml(q.genre||'(ジャンル未入力)')}</span>
+      ${modeBadge(q,'q-mode')}
       <span class="q-count">正解数 ${q.answerCount===''?'?':escapeHtml(q.answerCount)}</span>
       ${errs.length?`<span class="q-err-badge" title="${escapeHtml(errs.join(' / '))}">⚠ エラー${errs.length}件</span>`:''}
       <span class="q-title-preview">${escapeHtml((q.text||'').slice(0,40))}</span>
@@ -683,6 +704,10 @@ function buildQCardHTML(q, idx){
     <div class="q-head" draggable="true">${buildQHeadInnerHTML(q, idx)}</div>
     ${expanded?`<div class="q-detail">
       <label>ジャンル（ホスト画面の選択肢に出ます。同じ名前は不可）<br><input type="text" class="f-genre" style="width:100%" value="${escapeHtml(q.genre)}" placeholder="例：都道府県①"></label>
+      <label>クイズの形式<br><select class="f-mode-select">
+        <option value="time" ${modeOf(q)==='time'?'selected':''}>⏱ ${MODE_LABEL.time}（${MODE_DESC.time}）</option>
+        <option value="count" ${modeOf(q)==='count'?'selected':''}>🔢 ${MODE_LABEL.count}（${MODE_DESC.count}）</option>
+      </select></label>
       <label>問題文<textarea class="f-text" rows="2">${escapeHtml(q.text)}</textarea></label>
       <div class="row">
         <label>問題画像（複数可）<input type="file" accept="image/*" class="f-img-input" multiple></label>
@@ -736,6 +761,7 @@ function attachQuestionListEvents(){
     const f=findQ(e.target); if(!f) return; const q=f.q;
     if(e.target.classList.contains('chk-include')){ q.include=e.target.checked; renderConfirm(); }
     else if(e.target.classList.contains('chk-done')){ q.done=e.target.checked; }
+    else if(e.target.classList.contains('f-mode-select')){ q.mode=e.target.value==='count'?'count':'time'; refreshQStatuses(); }
     else if(e.target.classList.contains('f-img-input')){
       const files=Array.from(e.target.files||[]); if(!files.length) return;
       Promise.all(files.map(file=>compressImageFile(file))).then(urls=>{ q.imgs.push(...urls); renderQList(); });
@@ -760,12 +786,11 @@ function renderConfirm(){
   const qs=includedQs();
   const errCount=qs.filter(q=>questionErrors(q).length).length;
   el.innerHTML = `
-    <p>形式：<strong>${MODE_LABEL[appData.mode]}</strong>（${appData.mode==='time'?'0秒からカウントアップ／最大45秒':'45秒からカウントダウン'}）</p>
-    <p>出題する問題：<strong>${qs.length}問</strong>（参加者は最大${qs.length}人まで。参加者より問題が少ないとゲームを開始できません）</p>
+    <p>出題する問題：<strong>${qs.length}問</strong>（${MODE_ICON.time} ${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問 ／ ${MODE_ICON.count} ${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）（参加者は最大${qs.length}人まで。参加者より問題が少ないとゲームを開始できません）</p>
     ${errCount?`<p class="confirm-err">⚠ 入力エラーのある問題が${errCount}問あります（このままでは開始できません）</p>`:''}
     <ol class="confirm-list">${qs.map(q=>{
       const errs=questionErrors(q);
-      return `<li><strong>${escapeHtml(q.genre||'(ジャンル未入力)')}</strong>（正解数 ${q.answerCount===''?'?':escapeHtml(q.answerCount)}）<span class="muted">　${escapeHtml((q.text||'').slice(0,50))}</span>${q.done?' <span class="muted">［出題済み］</span>':''}
+      return `<li><strong>${escapeHtml(q.genre||'(ジャンル未入力)')}</strong> ${modeBadge(q,'q-mode')}（正解数 ${q.answerCount===''?'?':escapeHtml(q.answerCount)}）<span class="muted">　${escapeHtml((q.text||'').slice(0,50))}</span>${q.done?' <span class="muted">［出題済み］</span>':''}
         ${errs.length?`<div class="confirm-err">⚠ ${errs.map(escapeHtml).join(' / ')}</div>`:''}</li>`;
     }).join('') || '<li class="muted">「出題する」にチェックされた問題がありません</li>'}</ol>`;
 }
@@ -870,14 +895,16 @@ function handleParticipantMessage(conn, data){
     const r=gameState.round;
     if(gameState.phase!=='predict' || !r || !r.q || data.playerId===r.answererId || !gameState.players[data.playerId]) return;
     let v=null;
-    if(appData.mode==='time' && data.giveUp) v=MAX_SEC;
-    else { const chk=validateNumber(data.value, appData.mode, r.q.answerCount); if(!chk.ok) return; v=chk.value; }
+    if(curMode()==='time' && data.giveUp) v=MAX_SEC;
+    else { const chk=validateNumber(data.value, curMode(), r.q.answerCount); if(!chk.ok) return; v=chk.value; }
     r.predictions[data.playerId]=v;
     saveGameState(); renderHostSafe();
     sendStateSyncTo(data.playerId);
   }
 }
 
+/** 出題中の問題の形式 */
+function curMode(){ const r=gameState && gameState.round; return (r && r.q) ? modeOf(r.q) : 'time'; }
 function roundNo(){ return gameState.answererOrder.length; }
 function totalRounds(){ return Object.keys(gameState.players).length; }
 function unchosenIds(){ return Object.keys(gameState.players).filter(id=>!gameState.answererOrder.includes(id)); }
@@ -891,7 +918,7 @@ function roundLabel(){
 function sendStateSyncTo(pid){
   const p=gameState.players[pid]; if(!p) return;
   const phase=gameState.phase, r=gameState.round;
-  const payload={phase, title:appData.title, mode:appData.mode, name:p.name};
+  const payload={phase, title:appData.title, mode:curMode(), name:p.name};
   const isAnswerer = !!(r && r.answererId===pid);
   if(phase==='lottery'){ payload.isAnswerer = gameState.lottery.animDone && gameState.lottery.drawnId===pid; }
   else if(phase==='genre'){ payload.isAnswerer=isAnswerer; }
@@ -948,7 +975,7 @@ function finalSteps(){
 
 /* ---- timer ---- */
 function timerElapsed(){ const t=gameState.timer; return Math.min(MAX_MS, t.baseMs + (t.running ? Date.now()-t.startedAt : 0)); }
-function timerDisplayMs(){ const e=timerElapsed(); return appData.mode==='time' ? e : MAX_MS-e; }
+function timerDisplayMs(){ const e=timerElapsed(); return curMode()==='time' ? e : MAX_MS-e; }
 function tickTimer(){
   if(!gameState || gameState.phase!=='question') return;
   try{
@@ -1073,8 +1100,8 @@ function redrawLottery(){
 function pickGenre(qid){
   const q=includedQs().find(x=>x.id===qid);
   if(!q || gameState.usedQids.includes(qid)) return;
-  if(!confirm(`「${q.genre}」（正解数 ${q.answerCount}）で出題します。よろしいですか？`)) return;
-  gameState.round.q={id:q.id, genre:q.genre, text:q.text, imgs:q.imgs||[], answers:parseAnswers(q.answersText), answerCount:Number(q.answerCount)};
+  if(!confirm(`「${q.genre}」（${MODE_LABEL[modeOf(q)]}／正解数 ${q.answerCount}）で出題します。よろしいですか？`)) return;
+  gameState.round.q={id:q.id, genre:q.genre, mode:modeOf(q), text:q.text, imgs:q.imgs||[], answers:parseAnswers(q.answersText), answerCount:Number(q.answerCount)};
   gameState.round.predictions={};
   gameState.usedQids.push(qid);
   gameState.phase='predict';
@@ -1091,9 +1118,9 @@ async function markQuestionDone(qid){
 }
 function validateResultInput(){
   const r=gameState.round;
-  if(appData.mode==='time' && r.resultGiveUp) return {ok:true, value:MAX_SEC};
-  const chk=validateNumber(r.resultDraft, appData.mode, r.q.answerCount);
-  if(!chk.ok && !chk.msg) return {ok:false, msg:appData.mode==='time'?'秒数を入力するか「答えきれない」を選んでください':'正解数を入力してください'};
+  if(curMode()==='time' && r.resultGiveUp) return {ok:true, value:MAX_SEC};
+  const chk=validateNumber(r.resultDraft, curMode(), r.q.answerCount);
+  if(!chk.ok && !chk.msg) return {ok:false, msg:curMode()==='time'?'秒数を入力するか「答えきれない」を選んでください':'正解数を入力してください'};
   return chk;
 }
 function confirmResult(){
@@ -1199,8 +1226,7 @@ function renderLobby(){
     <p class="info-line">部屋番号：<strong>${myHostId||'-'}</strong>　参加人数：<strong>${n}</strong>人　出題できる問題：<strong>${qn}</strong>問</p>
     <div class="player-chips">${playerChips({removable:true})}</div>
     ${qn<n?`<div class="host-msg">⚠ 出題する問題（${qn}問）が参加者（${n}人）より少ないため、このままでは開始できません。</div>`:''}
-    <div class="host-actions"><button data-action="start-game" class="btn-primary">▶ ゲーム開始</button></div>
-    <p class="host-note">形式：${MODE_LABEL[appData.mode]}</p>`;
+    <div class="host-actions"><button data-action="start-game" class="btn-primary">▶ ゲーム開始</button></div>`;
 }
 function renderQR(){
   const box=document.getElementById('qrcode-box'); if(!box || !myHostId) return;
@@ -1289,18 +1315,24 @@ function playLotteryAnimation(){
 function renderGenre(){
   const r=gameState.round;
   const qs=includedQs();
+  const sections=['time','count'].map(m=>({m, list:qs.filter(q=>modeOf(q)===m)})).filter(s=>s.list.length);
+  const sectionHTML=s=>`<div class="genre-section m-${s.m}">
+      <div class="genre-section-title">${MODE_ICON[s.m]} ${MODE_LABEL[s.m]}</div>
+      <div class="genre-section-sub">${MODE_DESC[s.m]}</div>
+      <div class="genre-board">${s.list.map(q=>{
+        const used=gameState.usedQids.includes(q.id);
+        return `<button class="genre-card m-${s.m}" data-action="pick-genre" data-arg="${q.id}" ${used?'disabled':''}>
+          ${used?'<span class="gc-used">出題済み</span>':''}${escapeHtml(q.genre)}<span class="gc-count">正解数 ${escapeHtml(q.answerCount)}</span></button>`;
+      }).join('')}</div>
+    </div>`;
   return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
     <h2>ジャンルを選んでください</h2>
-    <div class="genre-board">${qs.map(q=>{
-      const used=gameState.usedQids.includes(q.id);
-      return `<button class="genre-card" data-action="pick-genre" data-arg="${q.id}" ${used?'disabled':''}>
-        ${used?'<span class="gc-used">出題済み</span>':''}${escapeHtml(q.genre)}<span class="gc-count">正解数 ${escapeHtml(q.answerCount)}</span></button>`;
-    }).join('')}</div>
+    <div class="genre-sections ${sections.length<2?'single':''}">${sections.map(sectionHTML).join('')}</div>
     <div class="host-actions"><button data-action="back-to-lottery-result" class="host-btn">◀ 抽選結果に戻る</button></div>`;
 }
 function qHeaderHTML(q){
   return `<div class="genre-title">${escapeHtml(q.genre)}</div>
-    <div><span class="count-badge">正解数 ${q.answerCount}</span><span class="mode-badge">${MODE_LABEL[appData.mode]}</span></div>`;
+    <div><span class="count-badge">正解数 ${q.answerCount}</span>${modeBadge(q,'mode-badge')}</div>`;
 }
 function renderPredict(){
   const r=gameState.round;
@@ -1310,7 +1342,7 @@ function renderPredict(){
   return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
     ${qHeaderHTML(r.q)}
     <h2 style="margin-top:26px">📱 予想受付中</h2>
-    <p class="info-line">解答者以外の方は、スマホに出ている問題を見て<br>「${appData.mode==='time'?'何秒で全部答えられるか':MAX_SEC+'秒でいくつ答えられるか'}」を予想してください</p>
+    <p class="info-line">解答者以外の方は、スマホに出ている問題を見て<br>「${curMode()==='time'?'全部答えるのに何秒かかるか':MAX_SEC+'秒でいくつ答えられるか'}」を予想してください</p>
     <p class="info-line">提出済み <strong style="font-size:30px">${cnt}</strong> / ${predictors.length}人</p>
     <div class="player-chips">${playerChips({doneSet, answererId:r.answererId})}</div>
     <div class="host-actions"><button data-action="close-predict" class="btn-danger">⏹ 予想を締め切る</button></div>`;
@@ -1318,9 +1350,9 @@ function renderPredict(){
 function renderQuestion(){
   const r=gameState.round, t=gameState.timer;
   const el=timerElapsed(), ended=el>=MAX_MS;
-  const label=appData.mode==='time'?'経過時間（最大45秒）':'残り時間';
+  const label=curMode()==='time'?'経過時間（最大45秒）':'残り時間';
   let entry='';
-  if(appData.mode==='time'){
+  if(curMode()==='time'){
     entry=`<div class="re-row">結果：
       <input type="text" id="result-input" inputmode="numeric" value="${escapeHtml(r.resultDraft)}" ${r.resultGiveUp?'disabled':''}> 秒で全部正解
       <button data-action="toggle-giveup" class="host-btn" style="${r.resultGiveUp?'background:#7a4dd8;border-color:#b79cff':''}">${r.resultGiveUp?'☑':'☐'} 答えきれない（45秒）</button></div>`;
@@ -1350,7 +1382,7 @@ function renderQuestion(){
     </div>`;
 }
 function resultText(r){
-  if(appData.mode==='time') return r.result>=MAX_SEC ? `答えきれず…（${MAX_SEC}秒）` : `${r.result}秒で全問正解！`;
+  if(curMode()==='time') return r.result>=MAX_SEC ? `答えきれず…（${MAX_SEC}秒）` : `${r.result}秒で全問正解！`;
   return `${r.result}個 正解！<span style="font-size:24px;color:#cfd6ea">（全${r.q.answerCount}個中）</span>`;
 }
 function renderRevealAnswers(){
@@ -1377,7 +1409,7 @@ function renderRevealPredictions(){
     const v=r.predictions[id], s=scores[id]||0;
     const cls = v===r.result ? 'pita' : (s===1 ? 'near' : 'none');
     const label = v===r.result ? '🎯 ピタリ！ +3点' : (s===1 ? '📍 ニアピン +1点' : '0点');
-    return `<div class="pred-row ${cls}" style="animation-delay:${i*0.05}s"><span class="pn">${escapeHtml(pname(id))}</span><span class="pv">${formatValue(v, appData.mode)}</span><span class="pd">${v===r.result?'':'差 '+Math.abs(v-r.result)}</span><span class="pp">${label}</span></div>`;
+    return `<div class="pred-row ${cls}" style="animation-delay:${i*0.05}s"><span class="pn">${escapeHtml(pname(id))}</span><span class="pv">${formatValue(v, curMode())}</span><span class="pd">${v===r.result?'':'差 '+Math.abs(v-r.result)}</span><span class="pp">${label}</span></div>`;
   }).concat(missing.map(id=>`<div class="pred-row none"><span class="pn">${escapeHtml(pname(id))}</span><span class="pv">未提出</span><span class="pd"></span><span class="pp">0点</span></div>`)).join('');
   const last=isLastRound();
   return `${qHeaderHTML(r.q)}
@@ -1533,7 +1565,8 @@ function renderPredictParticipant(pl){
   }
   const isTime=pl.mode==='time';
   root.innerHTML = header + `<div class="p-card" style="text-align:center">
-      <div class="p-mode">${isTime?'解答者は何秒で全部答えられる？':`解答者は${MAX_SEC}秒でいくつ答えられる？`}</div>
+      <div class="p-mode" style="color:${isTime?'#2f7de0':'#d0621c'}">${MODE_ICON[pl.mode]} ${MODE_LABEL[pl.mode]}</div>
+      <div style="font-size:14px">${isTime?'解答者が全部答えるのに<strong>何秒</strong>かかるか予想してください':`解答者が${MAX_SEC}秒で<strong>いくつ</strong>答えられるか予想してください`}</div>
       <div class="p-input-row"><input type="text" id="pred-input" inputmode="numeric" autocomplete="off" value="${escapeHtml(pDraft.text)}" ${pDraft.giveUp?'disabled':''}><span class="unit">${isTime?'秒':'個'}</span></div>
       <div class="muted" style="font-size:13px">${isTime?`1〜${MAX_SEC-1}の整数`:`0〜${q.answerCount}の整数`}</div>
       <div class="p-warn" id="pred-warn"></div>
