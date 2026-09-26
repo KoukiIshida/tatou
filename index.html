@@ -105,8 +105,11 @@ textarea{width:100%; font-family:inherit;}
 .rule-display{text-align:left; max-width:1100px; margin:20px auto 28px; line-height:1.7; font-size:22px;}
 .rule-red{color:#c0392b; background:#f0f0f0; border:1px solid #ddd; padding:1px 7px; border-radius:6px; -webkit-box-decoration-break:clone; box-decoration-break:clone;}
 .rule-normal{color:#222;}
-.rule-display .rule-red{color:#e5342b; background:#fff; border:none;}
-.rule-display .rule-normal{color:#fff;}
+/* 貼り付けた文章に付いてくる文字色・背景色（黒など）は無視して、基本は白。「赤字」だけ赤で表示 */
+.rule-display, .rule-display *{color:#fff !important;}
+.rule-display *:not(.rule-red){background-color:transparent !important;}
+.rule-display .rule-red, .rule-display .rule-red *{color:#e5342b !important;}
+.rule-display .rule-red{background:#fff !important; border:none;}
 .rule-img{border-radius:8px; margin-bottom:10px; cursor:zoom-in; max-height:50vh;}
 #qrcode-box{display:inline-block; background:#fff; padding:12px; border-radius:10px;}
 .join-url{font-size:12px; color:#9aa; word-break:break-all;}
@@ -738,6 +741,13 @@ function attachRuleSlidesEvents(){
       else { document.execCommand(cmd, false, null); }
       slide.groups[gi]=editEl.innerHTML;
     }
+  });
+  // 貼り付けは書式（文字色など）を外して文字だけにする。黒文字が暗いホスト画面で見えなくなるのを防ぐ
+  container.addEventListener('paste', e=>{
+    if(!e.target.closest('.rule-group-edit')) return;
+    e.preventDefault();
+    const text=(e.clipboardData||window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, text);
   });
   container.addEventListener('input', e=>{
     const editEl=e.target.closest('.rule-group-edit'); if(!editEl) return;
