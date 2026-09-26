@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>多答クイズ</title>
+<title>プレッシャー多答クイズ</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
@@ -141,6 +141,7 @@ textarea{width:100%; font-family:inherit;}
 .genre-card .gc-used{position:absolute; top:8px; right:8px; font-size:12px; background:#555; color:#ddd; padding:2px 8px; border-radius:10px; font-weight:normal;}
 
 /* question */
+.q-hidden{margin:22px auto; max-width:760px; padding:26px; border:2px dashed #3a4260; border-radius:12px; color:#6f7892; font-size:20px;}
 .q-text-big{font-size:30px; margin:16px auto; white-space:pre-wrap; text-align:left; max-width:1000px; line-height:1.6;}
 .prompt-imgs{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin:10px 0;}
 .q-img{max-height:36vh; border-radius:8px; cursor:zoom-in;}
@@ -192,8 +193,9 @@ textarea{width:100%; font-family:inherit;}
 /* ---- 多答みくじ ---- */
 .omi-stage{position:relative; width:340px; height:560px; margin:0 auto;}
 .omi-tilt{position:absolute; left:50%; top:70px; width:160px; height:300px; margin-left:-80px; perspective:1100px; z-index:2; transform-origin:50% 50%; transition:opacity .6s, top .6s;}
-.omi-prism{position:absolute; inset:0; transform-style:preserve-3d; animation:omiSpin 7s linear infinite;}
-@keyframes omiSpin{from{transform:rotateX(-14deg) rotateY(0deg);} to{transform:rotateX(-14deg) rotateY(360deg);}}
+/* 文字は正面の1面だけなので、一回転させず左右に少し振って立体感だけ出す（正面が常にこちらを向く） */
+.omi-prism{position:absolute; inset:0; transform-style:preserve-3d; animation:omiSway 4s ease-in-out infinite;}
+@keyframes omiSway{0%,100%{transform:rotateX(-14deg) rotateY(-22deg);} 50%{transform:rotateX(-14deg) rotateY(22deg);}}
 .omi-face{position:absolute; left:50%; top:0; width:88px; height:300px; margin-left:-44px; backface-visibility:hidden;
   background:linear-gradient(90deg,#8e0c1d 0%,#c8142c 35%,#e02a40 50%,#c8142c 65%,#8e0c1d 100%);
   border-top:10px solid #d4a32c; border-bottom:10px solid #d4a32c; box-shadow:inset 0 0 0 2px rgba(255,215,120,.35);
@@ -239,6 +241,10 @@ textarea{width:100%; font-family:inherit;}
 .p-count{display:inline-block; background:#ffd166; padding:2px 12px; border-radius:14px; font-weight:bold; margin-top:4px;}
 .p-mode{font-size:17px; font-weight:bold; margin:10px 0 4px; color:#2f4ea8;}
 .p-q-text{font-size:16px; white-space:pre-wrap; margin:10px 0; text-align:left; line-height:1.6;}
+.p-answers-title{font-size:13px; font-weight:bold; color:#666; margin-top:12px; border-top:1px dashed #ccc; padding-top:10px;}
+.p-answers{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
+.p-ans{background:#f1f3f9; border:1px solid #dde2ef; border-radius:6px; padding:3px 8px; font-size:14px;}
+.p-ans-n{color:#999; font-size:11px; margin-right:4px;}
 .p-q-img{border-radius:8px; margin:6px 0; cursor:zoom-in; max-height:40vh;}
 .p-input-row{display:flex; align-items:center; justify-content:center; gap:8px; margin:12px 0 4px;}
 .p-input-row input{font-size:26px; width:120px; text-align:center; padding:8px; border:2px solid #bbb; border-radius:8px;}
@@ -261,7 +267,7 @@ textarea{width:100%; font-family:inherit;}
 
 <div id="page-admin" class="page">
   <div class="admin-wrap">
-    <h1>多答クイズ 管理画面</h1>
+    <h1>プレッシャー多答クイズ 管理画面</h1>
     <section class="card">
       <h2>基本設定</h2>
       <label>タイトル<br><input id="f-title" type="text" style="width:100%"></label>
@@ -288,7 +294,7 @@ textarea{width:100%; font-family:inherit;}
           列：<code>ジャンル, 形式, 問題文, 正解一覧, 正解数, 出題する, ID</code>（1行目は見出し）<br>
           ・形式は「全部」（45秒で全部答えられるか）か「いくつ」（45秒でいくつ答えられるか）<br>
           ・正解一覧は「,」区切りでそのまま1つのセルに入れてください　・出題するは「○」なら出題、空欄なら出題しない<br>
-          ・読み込むと、IDかジャンルが一致する問題は上書き（登録済みの画像は残ります）、それ以外は新しい問題として追加します。CSVにない問題は消えません<br>
+          ・読み込むと、IDかジャンルが一致する問題は上書き（登録済みの画像は残ります）、それ以外は新しい問題として追加します。CSVから消した問題は、読み込み時に削除するか確認します<br>
           ・新しく追加する行のIDは空欄でOK。問題が0件の状態で書き出すと見出しだけのひな形になります
         </div>
       </div>
@@ -410,13 +416,14 @@ async function idbGet(){const db=await openDb();return new Promise((res,rej)=>{c
 async function idbSet(data){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,DATA_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
 
 /* ---------- data model ---------- */
-function defaultAppData(){return { title:'多答クイズ', ruleSlides:[{img:null, groups:['']}], questions:[] };}
+function defaultAppData(){return { title:'プレッシャー多答クイズ', ruleSlides:[{img:null, groups:['']}], questions:[] };}
 function makeQ(mode){return {id:uid('q'), genre:'', mode:mode==='count'?'count':'time', text:'', imgs:[], answersText:'', answerCount:'', include:true, done:false};}
 function mergeLoadedAppData(loaded){
   const d=defaultAppData();
   const m=Object.assign({}, d, loaded||{});
   // 旧データ（形式がゲーム全体で1つだった頃）は、その形式を各問題に引き継ぐ
   const legacyMode = m.mode==='count' ? 'count' : 'time';
+  if(m.title==='多答クイズ') m.title=d.title;   // 旧タイトルのままなら新タイトルへ
   delete m.mode;
   if(!Array.isArray(m.ruleSlides) || !m.ruleSlides.length) m.ruleSlides=d.ruleSlides;
   m.ruleSlides.forEach(s=>{ if(!Array.isArray(s.groups)||!s.groups.length) s.groups=['']; });
@@ -484,7 +491,7 @@ document.addEventListener('DOMContentLoaded', init);
 async function init(){
   const loaded=await idbGet();
   if(loaded){ appData=mergeLoadedAppData(loaded); }
-  document.title = appData.title || '多答クイズ';
+  document.title = appData.title || 'プレッシャー多答クイズ';
   if(MODE==='admin'){ document.getElementById('page-admin').classList.add('active'); initAdmin(); }
   else if(MODE==='participant'){ document.getElementById('page-participant').classList.add('active'); initParticipant(); }
   else { document.getElementById('page-host').classList.add('active'); initHost(); }
@@ -601,12 +608,15 @@ async function importCsvFile(e){
   const dataRows = header.includes('ジャンル') ? rows.slice(1) : rows;   // 見出し行がなければ列の順番で読む
   const idx={genre:col('ジャンル'), mode:col('形式'), text:col('問題文'), answers:col('正解一覧'), count:col('正解数'), include:col('出題する'), id:col('ID')};
   const get=(r,k)=> idx[k]>=0 && idx[k]<r.length ? r[idx[k]] : undefined;
-  let added=0, updated=0;
+  let added=0, updated=0, removed=0;
+  const touched=new Set();
+  const before=appData.questions.slice();
   dataRows.forEach(r=>{
     const genre=(get(r,'genre')||'').trim();
     const id=(get(r,'id')||'').trim();
     let q = (id && appData.questions.find(x=>x.id===id)) || (genre && appData.questions.find(x=>(x.genre||'').trim()===genre));
     if(q) updated++; else { q=makeQ(); appData.questions.push(q); added++; }
+    touched.add(q.id);
     q.genre=genre;
     if(get(r,'mode')!==undefined) q.mode=parseCsvMode(get(r,'mode'));
     if(get(r,'text')!==undefined) q.text=get(r,'text');
@@ -614,15 +624,25 @@ async function importCsvFile(e){
     if(get(r,'count')!==undefined){ const c=normalizeDigits(get(r,'count')); q.answerCount = /^\d+$/.test(c) ? Number(c) : ''; }
     if(get(r,'include')!==undefined){ const v=String(get(r,'include')).trim(); q.include = /^(○|〇|◯|1|true|yes|y|出題|する)$/i.test(v); }
   });
+  // CSVから消した問題は、確認のうえ管理画面からも削除する
+  const missing=before.filter(q=>!touched.has(q.id));
+  if(missing.length){
+    const names=missing.map(q=>'・'+(q.genre||'(ジャンル未入力)')+((q.imgs&&q.imgs.length)?'（画像あり）':'')).join('\n');
+    if(confirm(`CSVに載っていない問題が${missing.length}件あります。\n${names}\n\nこれらを削除しますか？（画像も一緒に消えます）\nOK＝削除する／キャンセル＝残す`)){
+      const del=new Set(missing.map(q=>q.id));
+      appData.questions=appData.questions.filter(q=>!del.has(q.id));
+      removed=missing.length;
+    }
+  }
   await persistAppData();
   renderQList();
   const errCount=appData.questions.filter(q=>questionErrors(q).length).length;
-  alert(`CSVを読み込みました（上書き ${updated}件／追加 ${added}件）`+(errCount?`\n\n⚠ 入力エラーのある問題が${errCount}件あります。赤い問題を確認してください。`:''));
+  alert(`CSVを読み込みました（上書き ${updated}件／追加 ${added}件${removed?`／削除 ${removed}件`:''}）`+(errCount?`\n\n⚠ 入力エラーのある問題が${errCount}件あります。赤い問題を確認してください。`:''));
 }
 
 function buildExportText(){
   const qs=includedQs();
-  const lines=[`${appData.title||'多答クイズ'}　出題一覧`, `全${qs.length}問（${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問／${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）`, ''];
+  const lines=[`${appData.title||'プレッシャー多答クイズ'}　出題一覧`, `全${qs.length}問（${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問／${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）`, ''];
   qs.forEach((q,i)=>{
     const answers=parseAnswers(q.answersText);
     lines.push(`【${i+1}】ジャンル：${q.genre||'(未入力)'}（正解数：${q.answerCount===''?'未入力':q.answerCount}）`);
@@ -904,7 +924,7 @@ function freshGameState(){return {
   finalRanks:null, finalStep:-1,
   testMode:false                 // 動作確認モード（参加者0人でも進行でき、出題済みを付けない）
 };}
-function freshRound(answererId){return {answererId, q:null, predictions:{}, result:null, resultDraft:'', resultGiveUp:false};}
+function freshRound(answererId){return {answererId, q:null, predictions:{}, result:null, resultDraft:'', resultGiveUp:false, questionShown:false};}
 function genRoomId(){ return String(Math.floor(100000+Math.random()*900000)); }
 
 async function initHost(){
@@ -1020,7 +1040,7 @@ function sendStateSyncTo(pid){
   else if(phase==='predict'){
     payload.isAnswerer=isAnswerer;
     payload.roundKey=roundNo()+':'+(r.q?r.q.id:'');
-    if(!isAnswerer && r.q){ payload.q={genre:r.q.genre, text:r.q.text, imgs:r.q.imgs, answerCount:r.q.answerCount}; }
+    if(!isAnswerer && r.q){ payload.q={genre:r.q.genre, text:r.q.text, imgs:r.q.imgs, answerCount:r.q.answerCount, answers:r.q.answers}; }
     payload.myPrediction = r.predictions[pid]!=null ? r.predictions[pid] : null;
   }
   else if(phase==='question' || phase==='reveal_answers'){
@@ -1110,6 +1130,7 @@ const hostActions={
     gameState.timer={running:false, startedAt:0, baseMs:0};
     gameState.phase='question'; saveGameState(); broadcastStateSync(); renderHost();
   },
+  'toggle-question': ()=>{ const r=gameState.round; r.questionShown=!r.questionShown; saveGameState(); renderHost(); },
   'timer-start': ()=>{ const t=gameState.timer; if(t.running || timerElapsed()>=MAX_MS) return; t.running=true; t.startedAt=Date.now(); saveGameState(); renderHost(); },
   'timer-stop': ()=>{ const t=gameState.timer; if(!t.running) return; t.baseMs=timerElapsed(); t.running=false; saveGameState(); renderHost(); },
   'timer-reset': ()=>{ gameState.timer={running:false, startedAt:0, baseMs:0}; saveGameState(); renderHost(); },
@@ -1207,7 +1228,7 @@ function redrawLottery(){
 function pickGenre(qid){
   const q=includedQs().find(x=>x.id===qid);
   if(!q || gameState.usedQids.includes(qid)) return;
-  if(!confirm(`「${q.genre}」（${MODE_LABEL[modeOf(q)]}／正解数 ${q.answerCount}）で出題します。よろしいですか？`)) return;
+  if(!confirm(`「${q.genre}」（${MODE_LABEL[modeOf(q)]}）で出題します。よろしいですか？`)) return;
   gameState.round.q={id:q.id, genre:q.genre, mode:modeOf(q), text:q.text, imgs:q.imgs||[], answers:parseAnswers(q.answersText), answerCount:Number(q.answerCount)};
   gameState.round.predictions={};
   gameState.usedQids.push(qid);
@@ -1303,7 +1324,7 @@ function renderHost(){
   }catch(e){ console.error(e); body=`<div class="host-body"><div class="host-msg">表示エラー：${escapeHtml(e.message)}</div></div>`; }
   let rl=(['lottery','genre','predict','question','reveal_answers','reveal_predictions'].includes(gameState.phase) && roundNo()) ? `<span class="host-round">${roundLabel()}</span>` : '';
   if(gameState.testMode && gameState.phase!=='lobby') rl+='<span class="test-badge">🧪 動作確認モード</span>';
-  root.innerHTML = `<div class="host-topbar"><span><span class="host-title">${escapeHtml(appData.title||'多答クイズ')}</span>${rl}</span>
+  root.innerHTML = `<div class="host-topbar"><span><span class="host-title">${escapeHtml(appData.title||'プレッシャー多答クイズ')}</span>${rl}</span>
     <div class="host-topbar-actions">
       <button data-action="open-admin" class="btn-mini">⚙ 管理画面</button>
       <button data-action="restart-all" class="btn-mini">↺ 最初から</button>
@@ -1364,7 +1385,7 @@ function renderRule(){
 function omikujiHTML(name, stageClass){
   const len=Math.max(1, [...(name||'')].length);
   const fs=Math.max(11, Math.min(26, Math.floor(200/len)));
-  const faces=[0,1,2,3,4,5].map(i=>`<div class="omi-face" style="transform:rotateY(${i*60}deg) translateZ(76px)"><span>多答みくじ</span></div>`).join('');
+  const faces=[0,1,2,3,4,5].map(i=>`<div class="omi-face" style="transform:rotateY(${i*60}deg) translateZ(76px)">${i===0?'<span>多答みくじ</span>':''}</div>`).join('');
   return `<div class="omi-stage ${stageClass||''}" id="omi-stage">
     <div class="omi-stick"><span class="omi-name" style="font-size:${fs}px">${escapeHtml(name||'')}</span></div>
     <div class="omi-tilt"><div class="omi-prism">${faces}<div class="omi-cap top"></div><div class="omi-cap bottom"></div></div></div>
@@ -1435,7 +1456,7 @@ function renderGenre(){
       <div class="genre-board">${s.list.map(q=>{
         const used=gameState.usedQids.includes(q.id);
         return `<button class="genre-card m-${s.m}" data-action="pick-genre" data-arg="${q.id}" ${used?'disabled':''}>
-          ${used?'<span class="gc-used">出題済み</span>':''}${escapeHtml(q.genre)}<span class="gc-count">正解数 ${escapeHtml(q.answerCount)}</span></button>`;
+          ${used?'<span class="gc-used">出題済み</span>':''}${escapeHtml(q.genre)}</button>`;
       }).join('')}</div>
     </div>`;
   return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
@@ -1474,14 +1495,16 @@ function renderQuestion(){
   }
   return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
     ${qHeaderHTML(r.q)}
-    <div class="q-text-big">${escapeHtml(r.q.text)}</div>
-    ${renderImgList(r.q.imgs,'q-img')}
+    ${r.questionShown
+      ? `<div class="q-text-big">${escapeHtml(r.q.text)}</div>${renderImgList(r.q.imgs,'q-img')}`
+      : `<div class="q-hidden">問題は「📖 問題を表示」で表示されます</div>`}
     <div class="timer-wrap">
       <div class="timer-label">${label}</div>
       <div class="big-timer ${ended?'timeup':''}" id="big-timer">${(timerDisplayMs()/1000).toFixed(1)}<span class="unit">秒</span></div>
       <div class="timer-bar-outer"><div class="timer-bar-inner" id="timer-bar"></div></div>
       ${ended?'<div class="timeup-label">TIME UP!</div>':''}
       <div class="host-actions">
+        <button data-action="toggle-question" class="host-btn">${r.questionShown?'🙈 問題を隠す':'📖 問題を表示'}</button>
         <button data-action="timer-start" class="btn-primary" ${t.running||ended?'disabled':''}>▶ スタート</button>
         <button data-action="timer-stop" class="host-btn" ${t.running?'':'disabled'}>⏸ ストップ</button>
         <button data-action="timer-reset" class="host-btn" ${t.running?'disabled':''}>↺ リセット</button>
@@ -1622,7 +1645,7 @@ function myPredLine(pl){ return pl.myPrediction!=null ? `<p>あなたの予想�
 function renderParticipant(){
   const root=document.getElementById('participant-root');
   const pl=lastPayload; if(!pl) return;
-  document.title=pl.title||'多答クイズ';
+  document.title=pl.title||'プレッシャー多答クイズ';
   const see='ホストの画面をご覧ください';
   switch(pl.phase){
     case 'lobby': root.innerHTML=waitScreen(escapeHtml(pl.title||''), `${escapeHtml(pl.name)}さん、開始までお待ちください。`); break;
@@ -1662,6 +1685,8 @@ function renderPredictParticipant(pl){
       <div class="p-count">正解数 ${q.answerCount}</div>
       <div class="p-q-text">${escapeHtml(q.text)}</div>
       ${renderImgList(q.imgs,'p-q-img')}
+      <div class="p-answers-title">正解（全${(q.answers||[]).length}個）</div>
+      <div class="p-answers">${(q.answers||[]).map((a,i)=>`<span class="p-ans"><span class="p-ans-n">${i+1}</span>${escapeHtml(a)}</span>`).join('')}</div>
     </div>`;
   if(pl.myPrediction!=null && !pDraft.editing){
     root.innerHTML = header + `<div class="p-card" style="text-align:center">
