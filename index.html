@@ -63,6 +63,7 @@ textarea{width:100%; font-family:inherit;}
 .q-mode{font-size:12px; color:#fff; border-radius:10px; padding:2px 8px;}
 .q-mode.m-time{background:#2f7de0;} .q-mode.m-count{background:#e0782f;}
 .f-mode-select{font-size:15px; padding:8px;}
+.csv-box{margin-top:14px; padding:12px; border:1px dashed #b8c2dd; border-radius:8px; background:#f7f9ff;}
 
 /* ---- modal ---- */
 .text-modal{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:997; padding:16px;}
@@ -90,6 +91,7 @@ textarea{width:100%; font-family:inherit;}
 .host-topbar-actions{display:flex; gap:8px; flex-wrap:wrap;}
 .host-title{font-weight:bold; font-size:18px;}
 .host-round{font-size:14px; color:#ffd166; margin-left:10px;}
+.test-badge{font-size:13px; background:#7a4dd8; color:#fff; padding:3px 10px; border-radius:12px; margin-left:10px;}
 .host-body{padding:24px; text-align:center; max-width:1100px; margin:0 auto;}
 .host-body h2{font-size:30px; margin:10px 0 16px;}
 .rule-display{text-align:left; max-width:1100px; margin:20px auto 28px; line-height:1.7; font-size:22px;}
@@ -275,6 +277,21 @@ textarea{width:100%; font-family:inherit;}
       <p class="muted">正解は「,」区切りでまとめて登録してください（例：<code>北海道,青森県,岩手県</code>）。正解数と登録した正解の数が一致しないとエラーになります。ジャンル名は重複できません。</p>
       <div id="q-list"></div>
       <button type="button" id="q-add" class="btn-mini">＋ 問題を追加</button>
+      <div class="csv-box">
+        <strong>CSVで一括登録</strong>
+        <div class="row">
+          <button type="button" id="btn-csv-export" class="btn-mini">📄 問題をCSVで書き出す</button>
+          <button type="button" id="btn-csv-import" class="btn-mini">📄 CSVを読み込む</button>
+          <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none">
+        </div>
+        <div class="muted" style="font-size:12px; line-height:1.6">
+          列：<code>ジャンル, 形式, 問題文, 正解一覧, 正解数, 出題する, ID</code>（1行目は見出し）<br>
+          ・形式は「全部」（45秒で全部答えられるか）か「いくつ」（45秒でいくつ答えられるか）<br>
+          ・正解一覧は「,」区切りでそのまま1つのセルに入れてください　・出題するは「○」なら出題、空欄なら出題しない<br>
+          ・読み込むと、IDかジャンルが一致する問題は上書き（登録済みの画像は残ります）、それ以外は新しい問題として追加します。CSVにない問題は消えません<br>
+          ・新しく追加する行のIDは空欄でOK。問題が0件の状態で書き出すと見出しだけのひな形になります
+        </div>
+      </div>
     </section>
     <section class="card">
       <h2>出題設定 最終確認</h2>
@@ -489,6 +506,9 @@ function initAdmin(){
   document.getElementById('btn-import').addEventListener('click', ()=>document.getElementById('import-file-input').click());
   document.getElementById('import-file-input').addEventListener('change', importAppDataFile);
   document.getElementById('btn-export-text').addEventListener('click', openExportText);
+  document.getElementById('btn-csv-export').addEventListener('click', exportCsv);
+  document.getElementById('btn-csv-import').addEventListener('click', ()=>document.getElementById('csv-file-input').click());
+  document.getElementById('csv-file-input').addEventListener('change', importCsvFile);
   document.getElementById('text-modal-close').addEventListener('click', ()=>document.getElementById('text-modal').classList.remove('active'));
   document.getElementById('text-modal-copy').addEventListener('click', copyExportText);
   attachQuestionListEvents();
@@ -528,6 +548,78 @@ async function importAppDataFile(e){
   }
   e.target.value='';
 }
+/* ---- CSV（問題のテキスト部分だけを一括で書き出し／読み込み。画像は対象外） ---- */
+const CSV_HEADERS=['ジャンル','形式','問題文','正解一覧','正解数','出題する','ID'];
+const CSV_MODE_TEXT={time:'全部', count:'いくつ'};
+function csvCell(v){ const s=String(v==null?'':v); return /[",\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function parseCsv(text){
+  const rows=[]; let row=[], cell='', inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQ){
+      if(c==='"'){ if(text[i+1]==='"'){ cell+='"'; i++; } else inQ=false; }
+      else cell+=c;
+    } else if(c==='"') inQ=true;
+    else if(c===','){ row.push(cell); cell=''; }
+    else if(c==='\n' || c==='\r'){ if(c==='\r' && text[i+1]==='\n') i++; row.push(cell); rows.push(row); row=[]; cell=''; }
+    else cell+=c;
+  }
+  if(cell!=='' || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+function parseCsvMode(s){
+  s=String(s||'').trim();
+  if(/いくつ|count|個/i.test(s)) return 'count';
+  return 'time';
+}
+function exportCsv(){
+  const lines=[CSV_HEADERS.map(csvCell).join(',')];
+  appData.questions.forEach(q=>{
+    lines.push([q.genre, CSV_MODE_TEXT[modeOf(q)], q.text, q.answersText, q.answerCount, q.include?'○':'', q.id].map(csvCell).join(','));
+  });
+  // Excelで文字化けしないようBOM付きUTF-8で書き出す
+  const blob=new Blob(['﻿'+lines.join('\r\n')+'\r\n'], {type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=(appData.title||'tatou').replace(/[\\/:*?"<>|]/g,'_')+'_問題.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+async function readCsvText(file){
+  const buf=await file.arrayBuffer();
+  // ExcelでCSV保存するとShift_JISになることがあるので、UTF-8として読めなければShift_JISで読む
+  try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^﻿/,''); }
+  catch(e){ return new TextDecoder('shift_jis').decode(buf); }
+}
+async function importCsvFile(e){
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  let rows;
+  try{ rows=parseCsv(await readCsvText(f)); }catch(err){ alert('CSVの読み込みに失敗しました'); return; }
+  if(!rows.length){ alert('CSVが空です'); return; }
+  const header=rows[0].map(h=>h.trim().replace(/^﻿/,''));
+  const col=name=>{ const i=header.indexOf(name); return i>=0 ? i : (header.includes('ジャンル') ? -1 : CSV_HEADERS.indexOf(name)); };
+  const dataRows = header.includes('ジャンル') ? rows.slice(1) : rows;   // 見出し行がなければ列の順番で読む
+  const idx={genre:col('ジャンル'), mode:col('形式'), text:col('問題文'), answers:col('正解一覧'), count:col('正解数'), include:col('出題する'), id:col('ID')};
+  const get=(r,k)=> idx[k]>=0 && idx[k]<r.length ? r[idx[k]] : undefined;
+  let added=0, updated=0;
+  dataRows.forEach(r=>{
+    const genre=(get(r,'genre')||'').trim();
+    const id=(get(r,'id')||'').trim();
+    let q = (id && appData.questions.find(x=>x.id===id)) || (genre && appData.questions.find(x=>(x.genre||'').trim()===genre));
+    if(q) updated++; else { q=makeQ(); appData.questions.push(q); added++; }
+    q.genre=genre;
+    if(get(r,'mode')!==undefined) q.mode=parseCsvMode(get(r,'mode'));
+    if(get(r,'text')!==undefined) q.text=get(r,'text');
+    if(get(r,'answers')!==undefined) q.answersText=get(r,'answers').trim();
+    if(get(r,'count')!==undefined){ const c=normalizeDigits(get(r,'count')); q.answerCount = /^\d+$/.test(c) ? Number(c) : ''; }
+    if(get(r,'include')!==undefined){ const v=String(get(r,'include')).trim(); q.include = /^(○|〇|◯|1|true|yes|y|出題|する)$/i.test(v); }
+  });
+  await persistAppData();
+  renderQList();
+  const errCount=appData.questions.filter(q=>questionErrors(q).length).length;
+  alert(`CSVを読み込みました（上書き ${updated}件／追加 ${added}件）`+(errCount?`\n\n⚠ 入力エラーのある問題が${errCount}件あります。赤い問題を確認してください。`:''));
+}
+
 function buildExportText(){
   const qs=includedQs();
   const lines=[`${appData.title||'多答クイズ'}　出題一覧`, `全${qs.length}問（${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問／${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）`, ''];
@@ -809,7 +901,8 @@ function freshGameState(){return {
   lottery:{drawnId:null, animDone:false},
   round:null,
   timer:{running:false, startedAt:0, baseMs:0},
-  finalRanks:null, finalStep:-1
+  finalRanks:null, finalStep:-1,
+  testMode:false                 // 動作確認モード（参加者0人でも進行でき、出題済みを付けない）
 };}
 function freshRound(answererId){return {answererId, q:null, predictions:{}, result:null, resultDraft:'', resultGiveUp:false};}
 function genRoomId(){ return String(Math.floor(100000+Math.random()*900000)); }
@@ -870,7 +963,8 @@ function saveGameState(){
 }
 function sendTo(pid,msg){ const p=gameState.players[pid]; if(p&&p.conn&&p.conn.open){ try{p.conn.send(msg);}catch(e){} } }
 function broadcastStateSync(){ Object.keys(gameState.players).forEach(sendStateSyncTo); }
-function pname(pid){ const p=gameState.players[pid]; return p?p.name:'(退出)'; }
+const TEST_ANSWERER_ID='__test_answerer__';
+function pname(pid){ if(pid===TEST_ANSWERER_ID) return 'テスト解答者'; const p=gameState.players[pid]; return p?p.name:'(退出)'; }
 
 function handleParticipantMessage(conn, data){
   if(!data || !data.type) return;
@@ -906,10 +1000,11 @@ function handleParticipantMessage(conn, data){
 /** 出題中の問題の形式 */
 function curMode(){ const r=gameState && gameState.round; return (r && r.q) ? modeOf(r.q) : 'time'; }
 function roundNo(){ return gameState.answererOrder.length; }
-function totalRounds(){ return Object.keys(gameState.players).length; }
+function totalRounds(){ return gameState.testMode ? includedQs().length : Object.keys(gameState.players).length; }
 function unchosenIds(){ return Object.keys(gameState.players).filter(id=>!gameState.answererOrder.includes(id)); }
 function remainingQs(){ return includedQs().filter(q=>!gameState.usedQids.includes(q.id)); }
-function isLastRound(){ return unchosenIds().length===0; }
+// 動作確認モードは問題がなくなるまで続ける（参加者が1周しても終わらない）
+function isLastRound(){ return gameState.testMode ? remainingQs().length===0 : unchosenIds().length===0; }
 function roundLabel(){
   const n=roundNo(); if(!n) return '';
   return isLastRound() ? `第${n}問（最終問題）` : `第${n}問／全${totalRounds()}問`;
@@ -998,7 +1093,8 @@ const hostActions={
     if(!confirm(`「${pname(pid)}」さんを参加者から外しますか？`)) return;
     sendTo(pid,{type:'removed'}); delete gameState.players[pid]; saveGameState(); renderHost();
   },
-  'start-game': ()=>{ startGame(); },
+  'start-game': ()=>{ startGame(false); },
+  'start-test': ()=>{ startGame(true); },
   'rule-next': ()=>{ advanceRule(); },
   'rule-prev': ()=>{ retreatRule(); },
   'draw': ()=>{ drawLottery(); },
@@ -1049,16 +1145,24 @@ function onHostInput(e){
 
 /* ---- flow ---- */
 function hasRuleContent(){ return appData.ruleSlides.some(s=>s.img || s.groups.some(g=>stripHtml(g))); }
-async function startGame(){
+async function startGame(testMode){
   const loaded=await idbGet(); if(loaded) appData=mergeLoadedAppData(loaded);
   const qs=includedQs();
   const n=Object.keys(gameState.players).length;
-  const errs=[];
-  if(n<2) errs.push(`参加者が2人以上必要です（現在${n}人）`);
   const bad=qs.filter(q=>questionErrors(q).length);
-  if(bad.length) errs.push('入力エラーのある問題があります。管理画面で修正してください：\n'+bad.map(q=>`・${q.genre||'(ジャンル未入力)'}：${questionErrors(q).join(' / ')}`).join('\n'));
-  if(qs.length<n) errs.push(`出題する問題（${qs.length}問）が参加者の人数（${n}人）より少ないです。管理画面で問題を追加するか「出題する」にチェックを入れてください。`);
-  if(errs.length){ alert('ゲームを開始できません\n\n'+errs.join('\n\n')); return; }
+  const badText='入力エラーのある問題があります。管理画面で修正してください：\n'+bad.map(q=>`・${q.genre||'(ジャンル未入力)'}：${questionErrors(q).join(' / ')}`).join('\n');
+  if(testMode){
+    // 動作確認モード：参加人数のチェックはしない。問題のエラーは警告だけ
+    if(!qs.length){ alert('「出題する」にチェックされた問題がありません'); return; }
+    if(bad.length && !confirm(badText+'\n\nこのまま動作確認を始めますか？')) return;
+  } else {
+    const errs=[];
+    if(n<2) errs.push(`参加者が2人以上必要です（現在${n}人）。参加者なしで確認したい場合は「動作確認モードで開始」を使ってください。`);
+    if(bad.length) errs.push(badText);
+    if(qs.length<n) errs.push(`出題する問題（${qs.length}問）が参加者の人数（${n}人）より少ないです。管理画面で問題を追加するか「出題する」にチェックを入れてください。`);
+    if(errs.length){ alert('ゲームを開始できません\n\n'+errs.join('\n\n')); return; }
+  }
+  gameState.testMode=!!testMode;
   if(hasRuleContent()){ gameState.phase='rule'; gameState.ruleSlideIndex=0; gameState.ruleRevealIndex=0; }
   else enterLottery();
   saveGameState(); broadcastStateSync(); renderHost();
@@ -1080,11 +1184,13 @@ function enterLottery(){
   gameState.phase='lottery'; gameState.lottery={drawnId:null, animDone:false}; gameState.round=null;
 }
 function drawPool(){ return unchosenIds().filter(id=>gameState.players[id].connected); }
-function canDraw(){ return drawPool().length>0 && remainingQs().length>0; }
+function canDraw(){ return (drawPool().length>0 || gameState.testMode) && remainingQs().length>0; }
 function drawLottery(){
   if(gameState.lottery.drawnId || lotteryAnimating) return;
-  const pool=drawPool(); if(!pool.length || !remainingQs().length) return;
-  const id=pool[Math.floor(Math.random()*pool.length)];
+  if(!canDraw()) return;
+  const pool=drawPool();
+  // 動作確認モードで引ける参加者がいない時は、架空の「テスト解答者」を当てる
+  const id=pool.length ? pool[Math.floor(Math.random()*pool.length)] : TEST_ANSWERER_ID;
   gameState.lottery={drawnId:id, animDone:false};
   gameState.answererOrder.push(id);
   gameState.round=freshRound(id);
@@ -1094,7 +1200,8 @@ function drawLottery(){
 function redrawLottery(){
   const id=gameState.lottery.drawnId; if(!id) return;
   if(!confirm(`「${pname(id)}」さんの当選を取り消して引き直しますか？`)) return;
-  gameState.answererOrder=gameState.answererOrder.filter(x=>x!==id);
+  const idx=gameState.answererOrder.lastIndexOf(id);
+  if(idx>=0) gameState.answererOrder.splice(idx,1);
   enterLottery(); saveGameState(); broadcastStateSync(); renderHost();
 }
 function pickGenre(qid){
@@ -1106,7 +1213,7 @@ function pickGenre(qid){
   gameState.usedQids.push(qid);
   gameState.phase='predict';
   saveGameState(); broadcastStateSync(); renderHost();
-  markQuestionDone(qid);
+  if(!gameState.testMode) markQuestionDone(qid);
 }
 /** 管理画面の「出題済み」を付ける。管理画面側の編集を上書きしないよう、最新データを読み直して該当問題だけ更新 */
 async function markQuestionDone(qid){
@@ -1194,7 +1301,8 @@ function renderHost(){
       case 'final': body=renderFinal(); break;
     }
   }catch(e){ console.error(e); body=`<div class="host-body"><div class="host-msg">表示エラー：${escapeHtml(e.message)}</div></div>`; }
-  const rl=(['lottery','genre','predict','question','reveal_answers','reveal_predictions'].includes(gameState.phase) && roundNo()) ? `<span class="host-round">${roundLabel()}</span>` : '';
+  let rl=(['lottery','genre','predict','question','reveal_answers','reveal_predictions'].includes(gameState.phase) && roundNo()) ? `<span class="host-round">${roundLabel()}</span>` : '';
+  if(gameState.testMode && gameState.phase!=='lobby') rl+='<span class="test-badge">🧪 動作確認モード</span>';
   root.innerHTML = `<div class="host-topbar"><span><span class="host-title">${escapeHtml(appData.title||'多答クイズ')}</span>${rl}</span>
     <div class="host-topbar-actions">
       <button data-action="open-admin" class="btn-mini">⚙ 管理画面</button>
@@ -1226,7 +1334,11 @@ function renderLobby(){
     <p class="info-line">部屋番号：<strong>${myHostId||'-'}</strong>　参加人数：<strong>${n}</strong>人　出題できる問題：<strong>${qn}</strong>問</p>
     <div class="player-chips">${playerChips({removable:true})}</div>
     ${qn<n?`<div class="host-msg">⚠ 出題する問題（${qn}問）が参加者（${n}人）より少ないため、このままでは開始できません。</div>`:''}
-    <div class="host-actions"><button data-action="start-game" class="btn-primary">▶ ゲーム開始</button></div>`;
+    <div class="host-actions">
+      <button data-action="start-game" class="btn-primary">▶ ゲーム開始</button>
+      <button data-action="start-test" class="host-btn">🧪 動作確認モードで開始</button>
+    </div>
+    <p class="host-note">動作確認モード：参加者0人でも進められます（抽選できる人がいない時は「テスト解答者」が当たります）。問題を選んでも管理画面の「出題済み」は付きません。</p>`;
 }
 function renderQR(){
   const box=document.getElementById('qrcode-box'); if(!box || !myHostId) return;
@@ -1268,13 +1380,14 @@ function renderLottery(){
   if(!L.drawnId){
     let warn='', canGo=true;
     if(!qLeft){ warn=`<div class="host-msg">出題できる問題が残っていません。最終結果発表へ進んでください。</div>`; canGo=false; }
+    else if(!pool.length && gameState.testMode){ warn=`<div class="host-msg">🧪 抽選できる参加者がいないため「テスト解答者」が当たります。</div>`; }
     else if(!pool.length){ warn=`<div class="host-msg">まだ解答者になっていない人（${remain.map(pname).join('、')}）が全員切断中です。再接続を待つか、最終結果発表へ進んでください。</div>`; canGo=false; }
     return `<h2>次の解答者は…？</h2>
       ${omikujiHTML('', '')}
       ${warn}
       <div class="host-actions">
         <button data-action="draw" class="btn-primary" ${canGo?'':'disabled'}>🎋 多答みくじを引く (Enter)</button>
-        ${canGo?'':'<button data-action="go-final" class="btn-danger">🏆 最終結果発表へ</button>'}
+        ${(!canGo || gameState.testMode)?'<button data-action="go-final" class="btn-danger">🏆 最終結果発表へ</button>':''}
       </div>
       <p class="host-note">まだ解答者になっていない人：${remain.length}人（抽選対象＝接続中の${pool.length}人）</p>
       ${chips}`;
