@@ -91,6 +91,14 @@ textarea{width:100%; font-family:inherit;}
 .host-topbar-actions{display:flex; gap:8px; flex-wrap:wrap;}
 .host-title{font-weight:bold; font-size:18px;}
 .host-round{font-size:14px; color:#ffd166; margin-left:10px;}
+.predict-timer-wrap{max-width:520px; margin:6px auto 14px;}
+.predict-timer{font-size:84px; font-weight:bold; font-variant-numeric:tabular-nums; line-height:1;}
+.predict-timer .unit{font-size:30px; margin-left:4px;}
+.redo-badge{display:inline-block; background:#c2410c; color:#fff; font-weight:bold; font-size:20px; padding:4px 16px; border-radius:20px; margin-bottom:6px;}
+.redo-list{max-width:860px; margin:16px auto; display:flex; flex-direction:column; gap:8px;}
+.redo-row{display:flex; align-items:center; gap:14px; background:#232838; padding:10px 16px; border-radius:10px; font-size:20px; text-align:left;}
+.redo-row .rn{flex:1 1 180px;} .redo-row .rg{flex:1 1 180px; color:#ffd166;} .redo-row .rr{flex:0 0 200px; color:#cfd6ea; font-size:17px;}
+.redo-tag{font-size:12px; background:#c2410c; padding:2px 8px; border-radius:10px; vertical-align:middle;}
 .test-badge{font-size:13px; background:#7a4dd8; color:#fff; padding:3px 10px; border-radius:12px; margin-left:10px;}
 .host-body{padding:24px; text-align:center; max-width:1100px; margin:0 auto;}
 .host-body h2{font-size:30px; margin:10px 0 16px;}
@@ -236,6 +244,9 @@ textarea{width:100%; font-family:inherit;}
 .p-center button, .p-btn{padding:12px 26px; font-size:16px; background:var(--accent); color:#fff; border:none; border-radius:8px;}
 .p-btn:disabled{background:#aaa;}
 .p-btn-sub{padding:10px 18px; font-size:14px; background:#fff; color:#333; border:1px solid #999; border-radius:8px;}
+.p-timer-bar{position:sticky; top:0; z-index:10; background:#222; color:#fff; text-align:center; padding:8px; font-size:16px;}
+.p-timer-bar strong{font-size:24px; font-variant-numeric:tabular-nums;}
+.p-timer-bar.over{background:var(--bad);}
 .p-card{background:#fff; margin:12px; padding:16px; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.08);}
 .p-genre{font-size:22px; font-weight:bold; color:#b8326a;}
 .p-count{display:inline-block; background:#ffd166; padding:2px 12px; border-radius:14px; font-weight:bold; margin-top:4px;}
@@ -353,6 +364,7 @@ textarea{width:100%; font-family:inherit;}
 <script>
 /* ---------- constants ---------- */
 const MAX_SEC=45, MAX_MS=MAX_SEC*1000;
+const PREDICT_MS=45*1000, PREDICT_GRACE_MS=1500;   // 予想の制限時間
 const DB_NAME='tatou_quiz_db', STORE_NAME='kv', DATA_KEY='appData';
 const LS_ROOM='tatou_room', LS_STATE='tatou_gamestate';
 const SS_PID='tatou_pid', SS_NAME='tatou_name';
@@ -1008,6 +1020,7 @@ function handleParticipantMessage(conn, data){
   } else if(data.type==='predict'){
     const r=gameState.round;
     if(gameState.phase!=='predict' || !r || !r.q || data.playerId===r.answererId || !gameState.players[data.playerId]) return;
+    if(r.predictDeadline && Date.now() > r.predictDeadline + PREDICT_GRACE_MS) return;   // 制限時間切れ（通信の遅れ分だけ少し猶予）
     let v=null;
     if(curMode()==='time' && data.giveUp) v=MAX_SEC;
     else { const chk=validateNumber(data.value, curMode(), r.q.answerCount); if(!chk.ok) return; v=chk.value; }
@@ -1026,6 +1039,7 @@ function remainingQs(){ return includedQs().filter(q=>!gameState.usedQids.includ
 // 動作確認モードは問題がなくなるまで続ける（参加者が1周しても終わらない）
 function isLastRound(){ return gameState.testMode ? remainingQs().length===0 : unchosenIds().length===0; }
 function roundLabel(){
+  if(gameState.round && gameState.round.isRedo) return `やり直し（${pname(gameState.round.answererId)}さん）`;
   const n=roundNo(); if(!n) return '';
   return isLastRound() ? `第${n}問（最終問題）` : `第${n}問／全${totalRounds()}問`;
 }
@@ -1042,6 +1056,8 @@ function sendStateSyncTo(pid){
     payload.roundKey=roundNo()+':'+(r.q?r.q.id:'');
     if(!isAnswerer && r.q){ payload.q={genre:r.q.genre, text:r.q.text, imgs:r.q.imgs, answerCount:r.q.answerCount, answers:r.q.answers}; }
     payload.myPrediction = r.predictions[pid]!=null ? r.predictions[pid] : null;
+    // 端末ごとに時計がずれているので、締切時刻ではなく残り時間を送る
+    payload.remainingMs = r.predictDeadline ? Math.max(0, r.predictDeadline-Date.now()) : PREDICT_MS;
   }
   else if(phase==='question' || phase==='reveal_answers'){
     payload.isAnswerer=isAnswerer;
@@ -1074,7 +1090,7 @@ function computeScores(r){
 function computeRanks(){
   const totals={};
   Object.keys(gameState.players).forEach(id=>totals[id]=0);
-  gameState.history.forEach(h=>Object.entries(h.scores||{}).forEach(([id,s])=>{ if(id in totals) totals[id]+=s; }));
+  gameState.history.filter(h=>!h.voided).forEach(h=>Object.entries(h.scores||{}).forEach(([id,s])=>{ if(id in totals) totals[id]+=s; }));
   const arr=Object.keys(totals).map(id=>({id, name:pname(id), total:totals[id]})).sort((a,b)=>b.total-a.total);
   arr.forEach((x,i)=>{ x.rank = (i>0 && arr[i-1].total===x.total) ? arr[i-1].rank : i+1; });
   return arr;
@@ -1091,8 +1107,19 @@ function finalSteps(){
 /* ---- timer ---- */
 function timerElapsed(){ const t=gameState.timer; return Math.min(MAX_MS, t.baseMs + (t.running ? Date.now()-t.startedAt : 0)); }
 function timerDisplayMs(){ const e=timerElapsed(); return curMode()==='time' ? e : MAX_MS-e; }
+function predictRemainingMs(){ const r=gameState.round; return r && r.predictDeadline ? Math.max(0, r.predictDeadline-Date.now()) : PREDICT_MS; }
 function tickTimer(){
-  if(!gameState || gameState.phase!=='question') return;
+  if(!gameState) return;
+  if(gameState.phase==='predict'){
+    try{
+      const ms=predictRemainingMs();
+      const el=document.getElementById('predict-timer'); if(el) el.textContent=Math.ceil(ms/1000);
+      const bar=document.getElementById('predict-bar'); if(bar) bar.style.width=(ms/PREDICT_MS*100)+'%';
+      if(ms<=0 && !lotteryAnimating) closePredict(true);
+    }catch(e){ console.error(e); }
+    return;
+  }
+  if(gameState.phase!=='question') return;
   try{
     const el=document.getElementById('big-timer');
     if(el) el.firstChild.textContent=(timerDisplayMs()/1000).toFixed(1);
@@ -1121,15 +1148,13 @@ const hostActions={
   'redraw': ()=>{ redrawLottery(); },
   'to-genre': ()=>{ gameState.phase='genre'; saveGameState(); broadcastStateSync(); renderHost(); },
   'pick-genre': (qid)=>{ pickGenre(qid); },
-  'back-to-lottery-result': ()=>{ gameState.phase='lottery'; saveGameState(); broadcastStateSync(); renderHost(); },
-  'close-predict': ()=>{
-    const r=gameState.round;
-    const expected=Object.keys(gameState.players).filter(id=>id!==r.answererId);
-    const missing=expected.filter(id=>r.predictions[id]==null);
-    if(missing.length && !confirm(`まだ予想していない人がいます（${missing.map(pname).join('、')}）。締め切りますか？`)) return;
-    gameState.timer={running:false, startedAt:0, baseMs:0};
-    gameState.phase='question'; saveGameState(); broadcastStateSync(); renderHost();
+  'back-to-lottery-result': ()=>{
+    if(gameState.round && gameState.round.isRedo){ gameState.round=null; gameState.phase='redo_select'; }   // やり直しの取り消し
+    else gameState.phase='lottery';
+    saveGameState(); broadcastStateSync(); renderHost();
   },
+  'close-predict': ()=>{ closePredict(false); },
+  'redo-pick': (idx)=>{ startRedo(Number(idx)); },
   'toggle-question': ()=>{ const r=gameState.round; r.questionShown=!r.questionShown; saveGameState(); renderHost(); },
   'timer-start': ()=>{ const t=gameState.timer; if(t.running || timerElapsed()>=MAX_MS) return; t.running=true; t.startedAt=Date.now(); saveGameState(); renderHost(); },
   'timer-stop': ()=>{ const t=gameState.timer; if(!t.running) return; t.baseMs=timerElapsed(); t.running=false; saveGameState(); renderHost(); },
@@ -1140,7 +1165,8 @@ const hostActions={
   'back-to-question': ()=>{ gameState.phase='question'; saveGameState(); broadcastStateSync(); renderHost(); },
   'back-to-answers': ()=>{ gameState.phase='reveal_answers'; saveGameState(); broadcastStateSync(); renderHost(); },
   'next-round': ()=>{ finishRound(); },
-  'go-final': ()=>{ goFinal(); },
+  'go-final': ()=>{ goRedoSelect(); },
+  'final-start': ()=>{ if(confirm('やり直しは終わりにして、最終結果発表へ進みますか？')) goFinal(); },
   'final-next': ()=>{ advanceFinal(); }
 };
 function handleHostEnter(){
@@ -1231,7 +1257,10 @@ function pickGenre(qid){
   if(!confirm(`「${q.genre}」（${MODE_LABEL[modeOf(q)]}）で出題します。よろしいですか？`)) return;
   gameState.round.q={id:q.id, genre:q.genre, mode:modeOf(q), text:q.text, imgs:q.imgs||[], answers:parseAnswers(q.answersText), answerCount:Number(q.answerCount)};
   gameState.round.predictions={};
+  gameState.round.predictDeadline=Date.now()+PREDICT_MS;
   gameState.usedQids.push(qid);
+  // やり直しは、ジャンルを選んだ時点でその人の1回目の得点を無効にする
+  if(gameState.round.isRedo && gameState.history[gameState.round.redoOf]) gameState.history[gameState.round.redoOf].voided=true;
   gameState.phase='predict';
   saveGameState(); broadcastStateSync(); renderHost();
   if(!gameState.testMode) markQuestionDone(qid);
@@ -1260,19 +1289,45 @@ function confirmResult(){
   gameState.phase='reveal_answers';
   saveGameState(); broadcastStateSync(); renderHost();
 }
+function closePredict(auto){
+  const r=gameState.round; if(gameState.phase!=='predict' || !r) return;
+  if(!auto){
+    const expected=Object.keys(gameState.players).filter(id=>id!==r.answererId);
+    const missing=expected.filter(id=>r.predictions[id]==null);
+    if(missing.length && !confirm(`まだ予想していない人がいます（${missing.map(pname).join('、')}）。締め切りますか？`)) return;
+    if(gameState.phase!=='predict') return;   // 確認中に時間切れで締め切られていた場合
+  }
+  gameState.timer={running:false, startedAt:0, baseMs:0};
+  gameState.phase='question'; saveGameState(); broadcastStateSync(); renderHost();
+  if(auto) flashMessage('予想の制限時間になったので締め切りました');
+}
 function finishRound(){
   const r=gameState.round; if(!r || r.result==null) return;
-  gameState.history.push({answererId:r.answererId, q:{id:r.q.id, genre:r.q.genre, answerCount:r.q.answerCount}, result:r.result, predictions:r.predictions, scores:computeScores(r)});
+  gameState.history.push({answererId:r.answererId, q:{id:r.q.id, genre:r.q.genre, mode:r.q.mode, answerCount:r.q.answerCount}, result:r.result, predictions:r.predictions, scores:computeScores(r), redo:!!r.isRedo});
   gameState.round=null;
-  if(isLastRound()) goFinal();
+  if(r.isRedo || isLastRound()) goRedoSelect();
   else { enterLottery(); saveGameState(); broadcastStateSync(); renderHost(); }
 }
-function goFinal(){
-  if(gameState.round && gameState.round.result!=null && gameState.phase==='reveal_predictions'){ finishRound(); return; }
+/** 全員終わった後、最終結果発表の前の「やり直し確認」画面へ */
+function goRedoSelect(){
   if(gameState.phase==='lottery' && gameState.lottery.drawnId){
     // 引いた直後に結果発表へ進む場合、その抽選は無効にする
-    gameState.answererOrder=gameState.answererOrder.filter(x=>x!==gameState.lottery.drawnId);
+    const idx=gameState.answererOrder.lastIndexOf(gameState.lottery.drawnId);
+    if(idx>=0) gameState.answererOrder.splice(idx,1);
   }
+  gameState.round=null;
+  gameState.phase='redo_select';
+  saveGameState(); broadcastStateSync(); renderHost();
+}
+function startRedo(idx){
+  const h=gameState.history[idx]; if(!h || h.voided) return;
+  if(!remainingQs().length){ alert('残っているジャンルがないため、やり直しできません'); return; }
+  if(!confirm(`「${pname(h.answererId)}」さんがやり直します。\n1回目（${h.q.genre}）の予想の得点はなしになります。よろしいですか？\n（ジャンルを選んだ時点で確定します）`)) return;
+  gameState.round=Object.assign(freshRound(h.answererId), {isRedo:true, redoOf:idx});
+  gameState.phase='genre';
+  saveGameState(); broadcastStateSync(); renderHost();
+}
+function goFinal(){
   gameState.round=null;
   gameState.finalRanks=computeRanks();
   gameState.finalStep=-1;
@@ -1319,6 +1374,7 @@ function renderHost(){
       case 'question': body=renderQuestion(); break;
       case 'reveal_answers': body=renderRevealAnswers(); break;
       case 'reveal_predictions': body=renderRevealPredictions(); break;
+      case 'redo_select': body=renderRedoSelect(); break;
       case 'final': body=renderFinal(); break;
     }
   }catch(e){ console.error(e); body=`<div class="host-body"><div class="host-msg">表示エラー：${escapeHtml(e.message)}</div></div>`; }
@@ -1459,10 +1515,29 @@ function renderGenre(){
           ${used?'<span class="gc-used">出題済み</span>':''}${escapeHtml(q.genre)}</button>`;
       }).join('')}</div>
     </div>`;
-  return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
+  return `${r.isRedo?'<div class="redo-badge">🔁 やり直し</div>':''}
+    <div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
     <h2>ジャンルを選んでください</h2>
     <div class="genre-sections ${sections.length<2?'single':''}">${sections.map(sectionHTML).join('')}</div>
-    <div class="host-actions"><button data-action="back-to-lottery-result" class="host-btn">◀ 抽選結果に戻る</button></div>`;
+    <div class="host-actions"><button data-action="back-to-lottery-result" class="host-btn">${r.isRedo?'◀ やり直しを取り消す':'◀ 抽選結果に戻る'}</button></div>`;
+}
+function renderRedoSelect(){
+  const rows=gameState.history.map((h,i)=>({h,i}));
+  const active=rows.filter(x=>!x.h.voided);
+  const voided=rows.filter(x=>x.h.voided);
+  const qLeft=remainingQs().length;
+  const fmtResult=h=>formatValue(h.result, h.q.mode||'time').replace('答えきれない','答えきれず');
+  return `<h2>🔁 やり直し確認</h2>
+    <p class="info-line">最終結果発表の前に、やり直しをする人がいれば選んでください（何人でも1人ずつ選べます）。<br>やり直すと、その人の1回目の問題で予想した人たちの得点はなしになります。</p>
+    ${qLeft?`<p class="host-note">残っているジャンル：${qLeft}個</p>`:'<div class="host-msg">残っているジャンルがないため、やり直しはできません。</div>'}
+    <div class="redo-list">${active.map(({h,i})=>`<div class="redo-row">
+        <span class="rn">${escapeHtml(pname(h.answererId))}${h.redo?' <span class="redo-tag">やり直し後</span>':''}</span>
+        <span class="rg">${escapeHtml(h.q.genre)}</span>
+        <span class="rr">${fmtResult(h)}</span>
+        <button class="host-btn" data-action="redo-pick" data-arg="${i}" ${qLeft?'':'disabled'}>🔁 やり直す</button>
+      </div>`).join('') || '<p class="muted">まだ解答した人がいません</p>'}</div>
+    ${voided.length?`<p class="host-note">得点なしになった問題：${voided.map(({h})=>`${escapeHtml(pname(h.answererId))}（${escapeHtml(h.q.genre)}）`).join('、')}</p>`:''}
+    <div class="host-actions"><button data-action="final-start" class="btn-danger">🏆 最終結果発表へ</button></div>`;
 }
 function qHeaderHTML(q){
   return `<div class="genre-title">${escapeHtml(q.genre)}</div>
@@ -1476,10 +1551,16 @@ function renderPredict(){
   return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
     ${qHeaderHTML(r.q)}
     <h2 style="margin-top:26px">📱 予想受付中</h2>
+    <div class="predict-timer-wrap">
+      <div class="timer-label">予想の残り時間</div>
+      <div class="predict-timer"><span id="predict-timer">${Math.ceil(predictRemainingMs()/1000)}</span><span class="unit">秒</span></div>
+      <div class="timer-bar-outer"><div class="timer-bar-inner" id="predict-bar" style="width:${predictRemainingMs()/PREDICT_MS*100}%"></div></div>
+    </div>
     <p class="info-line">解答者以外の方は、スマホに出ている問題を見て<br>「${curMode()==='time'?'全部答えるのに何秒かかるか':MAX_SEC+'秒でいくつ答えられるか'}」を予想してください</p>
     <p class="info-line">提出済み <strong style="font-size:30px">${cnt}</strong> / ${predictors.length}人</p>
     <div class="player-chips">${playerChips({doneSet, answererId:r.answererId})}</div>
-    <div class="host-actions"><button data-action="close-predict" class="btn-danger">⏹ 予想を締め切る</button></div>`;
+    <div class="host-actions"><button data-action="close-predict" class="btn-danger">⏹ 予想を締め切る</button></div>
+    <p class="host-note">残り時間が0秒になると自動で締め切ります</p>`;
 }
 function renderQuestion(){
   const r=gameState.round, t=gameState.timer;
@@ -1554,7 +1635,9 @@ function renderRevealPredictions(){
     <div class="pred-list">${rows||'<p class="muted">予想した人がいません</p>'}</div>
     <div class="host-actions">
       <button data-action="back-to-answers" class="host-btn">◀ 戻る</button>
-      ${last?'<button data-action="next-round" class="btn-danger">🏆 最終結果発表へ (Enter)</button>':'<button data-action="next-round" class="btn-primary">▶ 次の解答者を選ぶ (Enter)</button>'}
+      ${r.isRedo ? '<button data-action="next-round" class="btn-primary">▶ やり直し確認に戻る (Enter)</button>'
+        : last ? '<button data-action="next-round" class="btn-danger">▶ 結果発表へ（やり直し確認） (Enter)</button>'
+        : '<button data-action="next-round" class="btn-primary">▶ 次の解答者を選ぶ (Enter)</button>'}
     </div>`;
 }
 function renderFinal(){
@@ -1563,7 +1646,7 @@ function renderFinal(){
   const nextStep=steps[k+1];
   let spot='';
   if(k<0){
-    spot=`<div class="final-spot"><div class="fs-rank">🏆 最終結果発表 🏆</div><div class="fs-pt" style="margin-top:10px">全${gameState.history.length}問の合計点で順位を発表します</div></div>`;
+    spot=`<div class="final-spot"><div class="fs-rank">🏆 最終結果発表 🏆</div><div class="fs-pt" style="margin-top:10px">全${gameState.history.filter(h=>!h.voided).length}問の合計点で順位を発表します</div></div>`;
   } else {
     const cur=steps[k];
     if(cur.kind==='top'){
@@ -1580,6 +1663,20 @@ function renderFinal(){
 /* ================= PARTICIPANT ================= */
 let myPlayerId=null, myName='', myConn=null, myPeer=null, lastPayload=null, removedByHost=false;
 let pDraft={key:null, text:'', giveUp:false, editing:false};
+let pPredictDeadline=0;   // この端末の時計での予想締切（ホストから受け取った残り時間から計算）
+function pRemainingMs(){ return Math.max(0, pPredictDeadline-Date.now()); }
+setInterval(()=>{
+  if(MODE!=='participant' || !lastPayload || lastPayload.phase!=='predict') return;
+  const el=document.getElementById('p-predict-timer'); if(!el) return;
+  const ms=pRemainingMs();
+  el.textContent=Math.ceil(ms/1000);
+  if(ms<=0){
+    document.getElementById('p-timer-bar').classList.add('over');
+    const btn=document.getElementById('btn-submit-pred');
+    if(btn && !btn.disabled){ btn.disabled=true; const inp=document.getElementById('pred-input'); if(inp) inp.disabled=true; const w=document.getElementById('pred-warn'); if(w) w.textContent='予想の受付は終了しました'; }
+    const eb=document.getElementById('btn-edit-pred'); if(eb) eb.disabled=true;
+  }
+}, 200);
 
 function initParticipant(){
   requestWakeLock();
@@ -1632,7 +1729,11 @@ function renderNicknameForm(err){
 }
 function handleHostMessage(data){
   if(!data) return;
-  if(data.type==='state_sync'){ lastPayload=data.payload; renderParticipant(); }
+  if(data.type==='state_sync'){
+    lastPayload=data.payload;
+    if(lastPayload.phase==='predict') pPredictDeadline=Date.now()+(lastPayload.remainingMs||0);
+    renderParticipant();
+  }
   else if(data.type==='adopt_pid'){ myPlayerId=data.playerId; sessionStorage.setItem(SS_PID, myPlayerId); sendJoin(); }
   else if(data.type==='name_taken'){ myName=''; sessionStorage.removeItem(SS_NAME); renderNicknameForm('そのニックネームは使われています。別のニックネームにしてください'); }
   else if(data.type==='removed'){
@@ -1680,7 +1781,8 @@ function renderPredictParticipant(pl){
   if(pl.isAnswerer){ root.innerHTML=waitScreen('🎤 あなたが解答者です', 'ほかの人が予想中です。問題はまだ見られません。ホストの画面でお待ちください。'); return; }
   if(pDraft.key!==pl.roundKey){ pDraft={key:pl.roundKey, text:'', giveUp:false, editing:false}; }
   const q=pl.q||{};
-  const header=`<div class="p-card">
+  const header=`<div class="p-timer-bar ${pRemainingMs()<=0?'over':''}" id="p-timer-bar">予想の残り時間 <strong id="p-predict-timer">${Math.ceil(pRemainingMs()/1000)}</strong> 秒</div>
+    <div class="p-card">
       <div class="p-genre">${escapeHtml(q.genre)}</div>
       <div class="p-count">正解数 ${q.answerCount}</div>
       <div class="p-q-text">${escapeHtml(q.text)}</div>
@@ -1714,6 +1816,7 @@ function renderPredictParticipant(pl){
     </div>`;
   const inp=document.getElementById('pred-input'), warn=document.getElementById('pred-warn'), btn=document.getElementById('btn-submit-pred');
   const check=()=>{
+    if(pRemainingMs()<=0){ warn.textContent='予想の受付は終了しました'; btn.disabled=true; inp.disabled=true; return {ok:false}; }
     if(isTime && pDraft.giveUp){ warn.textContent=''; inp.classList.remove('invalid'); btn.disabled=false; return {ok:true}; }
     const c=validateNumber(pDraft.text, pl.mode, q.answerCount);
     warn.textContent=c.ok?'':c.msg;
@@ -1733,6 +1836,7 @@ function renderPredictParticipant(pl){
     const giveUp=isTime && pDraft.giveUp;
     const label=giveUp?formatValue(MAX_SEC,'time'):formatValue(c.value, pl.mode);
     if(!confirm(`「${label}」で送信します。よろしいですか？`)) return;
+    if(pRemainingMs()<=0){ alert('予想の受付は終了しました'); check(); return; }
     if(!(myConn&&myConn.open)){ alert('ホストとの接続が切れています。少し待ってからもう一度送信してください。'); return; }
     myConn.send({type:'predict', playerId:myPlayerId, value:giveUp?null:c.value, giveUp});
     pDraft.editing=false;
