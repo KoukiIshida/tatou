@@ -232,6 +232,9 @@ textarea{width:100%; font-family:inherit;}
 .omi-stage.st-inv .omi-tilt{transform:rotate(180deg); animation:omiShakeInv 1.1s ease-in-out;}
 @keyframes omiShakeInv{0%{transform:rotate(180deg)}20%{transform:rotate(168deg)}40%{transform:rotate(192deg)}60%{transform:rotate(170deg)}80%{transform:rotate(188deg)}100%{transform:rotate(180deg)}}
 .omi-stage.st-drop .omi-tilt{transform:rotate(180deg);}
+/* 棒は筒の後ろに置いてあり、揺らす・ひっくり返す間は傾いた筒からはみ出して見えるので、出てくる瞬間まで隠す */
+.omi-stick{visibility:hidden;}
+.omi-stage.st-drop .omi-stick, .omi-stage.st-reveal .omi-stick, .omi-stage.st-final .omi-stick{visibility:visible;}
 .omi-stage.st-drop .omi-stick{transform:translateY(190px);}
 .omi-stage.st-reveal .omi-tilt{transform:rotate(180deg); opacity:0; top:-40px;}
 .omi-stage.st-reveal .omi-stick{transform:translateY(40px) scale(1.75); transition:transform .8s cubic-bezier(.2,.8,.3,1.2);}
