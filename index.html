@@ -1520,7 +1520,7 @@ function renderRule(){
 function omikujiHTML(name, stageClass){
   const len=Math.max(1, [...(name||'')].length);
   const fs=Math.max(11, Math.min(26, Math.floor(200/len)));
-  const faces=[0,1,2,3,4,5].map(i=>`<div class="omi-face" style="transform:rotateY(${i*60}deg) translateZ(76px)">${i===0?'<span>多答みくじ</span>':''}</div>`).join('');
+  const faces=[0,1,2,3,4,5].map(i=>`<div class="omi-face" style="transform:rotateY(${i*60}deg) translateZ(76px)">${i===0?'<span>多答御籤</span>':''}</div>`).join('');
   return `<div class="omi-stage ${stageClass||''}" id="omi-stage">
     <div class="omi-stick"><span class="omi-name" style="font-size:${fs}px">${escapeHtml(name||'')}</span></div>
     <div class="omi-tilt"><div class="omi-prism">${faces}<div class="omi-cap top"></div><div class="omi-cap bottom"></div></div></div>
@@ -1586,8 +1586,7 @@ function renderGenre(){
   const qs=includedQs();
   const sections=['time','count'].map(m=>({m, list:qs.filter(q=>modeOf(q)===m)})).filter(s=>s.list.length);
   const sectionHTML=s=>`<div class="genre-section m-${s.m}">
-      <div class="genre-section-title">${MODE_ICON[s.m]} ${MODE_LABEL[s.m]}</div>
-      <div class="genre-section-sub">${MODE_DESC[s.m]}</div>
+      <div class="genre-section-title" style="margin-bottom:12px">${MODE_ICON[s.m]} ${MODE_LABEL[s.m]}</div>
       <div class="genre-board">${s.list.map(q=>{
         const used=gameState.usedQids.includes(q.id);
         return `<button class="genre-card m-${s.m}" data-action="pick-genre" data-arg="${q.id}" ${used?'disabled':''}>
