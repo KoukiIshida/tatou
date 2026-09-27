@@ -129,6 +129,10 @@ textarea{width:100%; font-family:inherit;}
 .info-line{font-size:20px; color:#cfd6ea; margin:6px 0;}
 .genre-title{font-size:40px; font-weight:bold; color:#ffd166; margin:8px 0;}
 .count-badge{display:inline-block; background:#ffd166; color:#222; font-weight:bold; font-size:22px; padding:4px 16px; border-radius:20px;}
+.count-big{display:inline-block; margin:14px auto 4px; padding:8px 34px; border-radius:18px; background:linear-gradient(180deg,#ffe28a,#ffc83d); color:#2a1d00; font-size:34px; font-weight:bold; box-shadow:0 0 0 4px rgba(255,200,61,.25), 0 0 28px rgba(255,200,61,.55); animation:countPop .45s cubic-bezier(.2,.9,.3,1.4) both;}
+.count-big strong{font-size:72px; line-height:1; margin:0 6px; font-variant-numeric:tabular-nums; vertical-align:-6px;}
+.count-big .u{font-size:30px;}
+@keyframes countPop{from{opacity:0; transform:scale(.5);} to{opacity:1; transform:scale(1);}}
 .mode-badge{display:inline-block; background:#2f7de0; color:#fff; font-size:18px; padding:4px 14px; border-radius:20px; margin-left:8px;}
 .mode-badge.m-count{background:#e0782f;}
 .answerer-line{font-size:24px; margin:8px 0;}
@@ -1620,8 +1624,14 @@ function renderRedoSelect(){
     ${voided.length?`<p class="host-note">得点なしになった問題：${voided.map(({h})=>`${escapeHtml(pname(h.answererId))}（${escapeHtml(h.q.genre)}）`).join('、')}</p>`:''}
     <div class="host-actions"><button data-action="final-start" class="btn-danger">🏆 最終結果発表へ</button></div>`;
 }
+/** showCount: true=通常の正解数バッジ／false=出さない／'big'=出題画面用の大きく目立つ表示 */
 function qHeaderHTML(q, showCount){
   if(showCount===undefined) showCount=true;
+  if(showCount==='big'){
+    return `<div class="genre-title">${escapeHtml(q.genre)}</div>
+      <div>${modeBadge(q,'mode-badge')}</div>
+      <div class="count-big">正解数 <strong>${q.answerCount}</strong><span class="u">個</span></div>`;
+  }
   return `<div class="genre-title">${escapeHtml(q.genre)}</div>
     <div>${showCount?`<span class="count-badge">正解数 ${q.answerCount}</span>`:''}${modeBadge(q,'mode-badge')}</div>`;
 }
@@ -1657,7 +1667,7 @@ function renderQuestion(){
     entry=`<div class="re-row">結果：<input type="text" id="result-input" inputmode="numeric" value="${escapeHtml(r.resultDraft)}"> 個 正解${r.countShown?`（0〜${r.q.answerCount}）`:''}</div>`;
   }
   return `<div class="answerer-line">解答者：<strong>${escapeHtml(pname(r.answererId))}</strong> さん</div>
-    ${qHeaderHTML(r.q, !!r.countShown)}
+    ${qHeaderHTML(r.q, r.countShown?'big':false)}
     ${r.questionShown
       ? `<div class="q-text-big">${escapeHtml(r.q.text)}</div>${renderImgList(r.q.imgs,'q-img')}`
       : `<div class="q-hidden">問題は「📖 問題を表示」で表示されます</div>`}
@@ -1667,8 +1677,8 @@ function renderQuestion(){
       <div class="timer-bar-outer"><div class="timer-bar-inner" id="timer-bar"></div></div>
       ${ended?'<div class="timeup-label">TIME UP!</div>':''}
       <div class="host-actions">
-        <button data-action="toggle-question" class="host-btn">${r.questionShown?'🙈 問題を隠す':'📖 問題を表示'}</button>
         <button data-action="toggle-count" class="host-btn">${r.countShown?'🙈 正解数を隠す':'🔢 正解数を表示'}</button>
+        <button data-action="toggle-question" class="host-btn">${r.questionShown?'🙈 問題を隠す':'📖 問題を表示'}</button>
         <button data-action="timer-start" class="btn-primary" ${t.running||ended?'disabled':''}>▶ スタート</button>
         <button data-action="timer-stop" class="host-btn" ${t.running?'':'disabled'}>⏸ ストップ</button>
         <button data-action="timer-reset" class="host-btn" ${t.running?'disabled':''}>↺ リセット</button>
