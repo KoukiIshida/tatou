@@ -177,6 +177,7 @@ textarea{width:100%; font-family:inherit;}
 .answer-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:8px; margin:16px 0; text-align:left;}
 .answer-chip{background:#232838; border:1px solid #39415c; border-radius:8px; padding:8px 12px; font-size:20px; display:flex; gap:8px; align-items:baseline;}
 .answer-chip .an{color:#8a93ad; font-size:13px; min-width:22px;}
+.bonus-line{display:inline-block; margin:4px auto 10px; padding:8px 20px; border-radius:24px; background:linear-gradient(90deg,#6b4d00,#3a2c05); border:2px solid var(--gold); color:var(--gold); font-size:24px; font-weight:bold; animation:popIn .5s ease both;}
 .result-big{font-size:44px; font-weight:bold; color:#ffd166; margin:14px 0;}
 .pred-list{max-width:760px; margin:16px auto; display:flex; flex-direction:column; gap:8px;}
 .pred-row{display:flex; align-items:center; gap:14px; background:#232838; padding:12px 18px; border-radius:10px; font-size:22px; animation:popIn .35s ease both;}
@@ -292,6 +293,22 @@ textarea{width:100%; font-family:inherit;}
       <h2>基本設定</h2>
       <label>タイトル<br><input id="f-title" type="text" style="width:100%"></label>
       <p class="muted">クイズの形式（⏱ 45秒で全部答えられるか／🔢 45秒でいくつ答えられるか）は問題ごとに設定します。制限時間はどちらも45秒固定です。</p>
+    </section>
+    <section class="card">
+      <h2>得点設定</h2>
+      <h3 style="margin-bottom:4px">予想する人の得点</h3>
+      <div class="row">
+        <label>🎯 ピタリ賞 <input type="number" min="0" step="1" id="f-pt-pita" style="width:70px"> 点</label>
+        <label>📍 ニアピン賞（ピタリ以外で一番近い人） <input type="number" min="0" step="1" id="f-pt-near" style="width:70px"> 点</label>
+      </div>
+      <p class="muted" style="font-size:12px">0点にするとその賞はなしになります（ニアピン賞を0にすると、ピタリの人以外は0点）。</p>
+      <h3 style="margin-bottom:4px">解答者の得点</h3>
+      <div class="row">
+        <label class="chk" style="font-size:14px"><input type="checkbox" id="f-bonus-on"> 🔢 45秒でいくつ答えられるか で全問正解したら、解答者に</label>
+        <input type="number" min="0" step="1" id="f-bonus-pt" style="width:70px"> 点
+      </div>
+      <p class="muted" style="font-size:12px">チェックを外すと、解答者はこれまでどおり0点です。⏱ 45秒で全部答えられるか の問題には付きません。</p>
+      <div id="scoring-err" class="confirm-err"></div>
     </section>
     <section class="card">
       <h2>ルール説明</h2>
@@ -437,7 +454,15 @@ async function idbGet(){const db=await openDb();return new Promise((res,rej)=>{c
 async function idbSet(data){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,DATA_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
 
 /* ---------- data model ---------- */
-function defaultAppData(){return { title:'ハウメニーアンサー', ruleSlides:[{img:null, groups:['']}], questions:[] };}
+function defaultScoring(){return { pita:3, near:1, answererFullBonusOn:true, answererFullBonus:3 };}
+function defaultAppData(){return { title:'ハウメニーアンサー', scoring:defaultScoring(), ruleSlides:[{img:null, groups:['']}], questions:[] };}
+/** 得点設定を正規化（未設定・不正値は初期値） */
+function normalizeScoring(s){
+  const d=defaultScoring(); s=Object.assign({}, d, s||{});
+  ['pita','near','answererFullBonus'].forEach(k=>{ const v=Number(s[k]); s[k]=(Number.isInteger(v)&&v>=0)?v:d[k]; });
+  s.answererFullBonusOn=!!s.answererFullBonusOn;
+  return s;
+}
 function makeQ(mode){return {id:uid('q'), genre:'', mode:mode==='count'?'count':'time', text:'', imgs:[], answersText:'', answerCount:'', include:true, done:false};}
 function mergeLoadedAppData(loaded){
   const d=defaultAppData();
@@ -448,6 +473,7 @@ function mergeLoadedAppData(loaded){
   delete m.mode;
   if(!Array.isArray(m.ruleSlides) || !m.ruleSlides.length) m.ruleSlides=d.ruleSlides;
   m.ruleSlides.forEach(s=>{ if(!Array.isArray(s.groups)||!s.groups.length) s.groups=['']; });
+  m.scoring=normalizeScoring(m.scoring);
   m.questions=(Array.isArray(m.questions)?m.questions:[]).map(q=>{
     const n=Object.assign(makeQ(), q, {imgs:Array.isArray(q.imgs)?q.imgs:[]});
     n.mode = (q.mode==='time'||q.mode==='count') ? q.mode : legacyMode;
@@ -523,6 +549,20 @@ let expandedIds=new Set();
 
 function initAdmin(){
   document.getElementById('f-title').addEventListener('input',e=>{appData.title=e.target.value;});
+  const onScoring=()=>{
+    const err=[];
+    const num=(id,label)=>{ const s=normalizeDigits(document.getElementById(id).value); if(!/^\d+$/.test(s)){ err.push(label+'は0以上の整数で入力してください'); return null; } return Number(s); };
+    const pita=num('f-pt-pita','ピタリ賞'), near=num('f-pt-near','ニアピン賞'), bonus=num('f-bonus-pt','解答者の全問正解ボーナス');
+    if(pita!=null) appData.scoring.pita=pita;
+    if(near!=null) appData.scoring.near=near;
+    if(bonus!=null) appData.scoring.answererFullBonus=bonus;
+    appData.scoring.answererFullBonusOn=document.getElementById('f-bonus-on').checked;
+    document.getElementById('f-bonus-pt').disabled=!appData.scoring.answererFullBonusOn;
+    document.getElementById('scoring-err').textContent=err.join(' ／ ');
+    renderConfirm();
+  };
+  ['f-pt-pita','f-pt-near','f-bonus-pt'].forEach(id=>document.getElementById(id).addEventListener('input',onScoring));
+  document.getElementById('f-bonus-on').addEventListener('change',onScoring);
   attachRuleSlidesEvents();
   document.getElementById('q-add').addEventListener('click',()=>{
     const last=appData.questions[appData.questions.length-1];
@@ -544,6 +584,12 @@ function initAdmin(){
 }
 function refreshAdminUI(){
   document.getElementById('f-title').value=appData.title;
+  document.getElementById('f-pt-pita').value=appData.scoring.pita;
+  document.getElementById('f-pt-near').value=appData.scoring.near;
+  document.getElementById('f-bonus-on').checked=appData.scoring.answererFullBonusOn;
+  document.getElementById('f-bonus-pt').value=appData.scoring.answererFullBonus;
+  document.getElementById('f-bonus-pt').disabled=!appData.scoring.answererFullBonusOn;
+  document.getElementById('scoring-err').textContent='';
   renderRuleSlidesEditor();
   renderQList();
 }
@@ -926,6 +972,7 @@ function renderConfirm(){
   const qs=includedQs();
   const errCount=qs.filter(q=>questionErrors(q).length).length;
   el.innerHTML = `
+    <p>得点：ピタリ賞 <strong>${appData.scoring.pita}点</strong> ／ ニアピン賞 <strong>${appData.scoring.near}点</strong> ／ 解答者の全問正解ボーナス（🔢いくつ のみ）<strong>${appData.scoring.answererFullBonusOn?appData.scoring.answererFullBonus+'点':'なし'}</strong></p>
     <p>出題する問題：<strong>${qs.length}問</strong>（${MODE_ICON.time} ${MODE_LABEL.time} ${qs.filter(q=>modeOf(q)==='time').length}問 ／ ${MODE_ICON.count} ${MODE_LABEL.count} ${qs.filter(q=>modeOf(q)==='count').length}問）（参加者は最大${qs.length}人まで。参加者より問題が少ないとゲームを開始できません）</p>
     ${errCount?`<p class="confirm-err">⚠ 入力エラーのある問題が${errCount}問あります（このままでは開始できません）</p>`:''}
     <ol class="confirm-list">${qs.map(q=>{
@@ -1083,6 +1130,8 @@ function sendStateSyncTo(pid){
     payload.isAnswerer=isAnswerer;
     payload.myPrediction = r.predictions[pid]!=null ? r.predictions[pid] : null;
     payload.earned = computeScores(r)[pid]||0;
+    payload.kind = classifyPredictions(r)[pid] || 'none';
+    payload.fullBonus = isAnswerer && answererBonus(r)>0;
   }
   else if(phase==='final'){
     const steps=finalSteps();
@@ -1093,14 +1142,27 @@ function sendStateSyncTo(pid){
 }
 
 /* ---- scoring ---- */
-/** ピタリ=3点。ピタリ以外の予想の中で結果との差（絶対値）が最小の人全員=1点 */
-function computeScores(r){
-  const scores={};
-  if(!r || r.result==null) return scores;
+/** 得点設定（ゲーム開始時点の設定で固定。開始前は管理データの設定） */
+function curScoring(){ return (gameState && gameState.scoring) || normalizeScoring(appData.scoring); }
+/** 予想者ごとの判定：pita=ピタリ／near=ピタリ以外で結果との差（絶対値）が最小（同距離は全員）／none */
+function classifyPredictions(r){
+  const kinds={};
+  if(!r || r.result==null) return kinds;
   const entries=Object.entries(r.predictions).filter(([pid])=>pid!==r.answererId);
   let minD=Infinity;
   entries.forEach(([,v])=>{ if(v!==r.result) minD=Math.min(minD, Math.abs(v-r.result)); });
-  entries.forEach(([pid,v])=>{ scores[pid] = v===r.result ? 3 : (Math.abs(v-r.result)===minD ? 1 : 0); });
+  entries.forEach(([pid,v])=>{ kinds[pid] = v===r.result ? 'pita' : (Math.abs(v-r.result)===minD ? 'near' : 'none'); });
+  return kinds;
+}
+/** 解答者が「45秒でいくつ」で全問正解したか */
+function isAnswererFullCorrect(r){ return !!(r && r.q && modeOf(r.q)==='count' && r.result!=null && r.result>=r.q.answerCount); }
+function answererBonus(r){ const s=curScoring(); return (s.answererFullBonusOn && isAnswererFullCorrect(r)) ? s.answererFullBonus : 0; }
+function computeScores(r){
+  const scores={};
+  if(!r || r.result==null) return scores;
+  const s=curScoring(), kinds=classifyPredictions(r);
+  Object.entries(kinds).forEach(([pid,k])=>{ scores[pid] = k==='pita' ? s.pita : (k==='near' ? s.near : 0); });
+  const bonus=answererBonus(r); if(bonus) scores[r.answererId]=bonus;
   return scores;
 }
 function computeRanks(){
@@ -1226,6 +1288,7 @@ async function startGame(testMode){
     if(errs.length){ alert('ゲームを開始できません\n\n'+errs.join('\n\n')); return; }
   }
   gameState.testMode=!!testMode;
+  gameState.scoring=normalizeScoring(appData.scoring);
   if(hasRuleContent()){ gameState.phase='rule'; gameState.ruleSlideIndex=0; gameState.ruleRevealIndex=0; }
   else enterLottery();
   saveGameState(); broadcastStateSync(); renderHost();
@@ -1625,6 +1688,7 @@ function renderRevealAnswers(){
     <div class="answer-grid">${r.q.answers.map((a,i)=>`<div class="answer-chip"><span class="an">${i+1}</span>${escapeHtml(a)}</div>`).join('')}</div>
     <div class="answerer-line">解答者 <strong>${escapeHtml(pname(r.answererId))}</strong> さんの結果</div>
     <div class="result-big">${resultText(r)}</div>
+    ${answererBonus(r)?`<div class="bonus-line">🎉 全問正解ボーナス！ ${escapeHtml(pname(r.answererId))}さんに +${answererBonus(r)}点</div>`:''}
     <div class="host-actions">
       <button data-action="back-to-question" class="host-btn">◀ 結果を修正</button>
       <button data-action="show-predictions" class="btn-primary">▶ 予想を発表 (Enter)</button>
@@ -1638,15 +1702,19 @@ function renderRevealPredictions(){
   const submitted=predictors.filter(id=>r.predictions[id]!=null)
     .sort((a,b)=>Math.abs(r.predictions[a]-r.result)-Math.abs(r.predictions[b]-r.result) || r.predictions[a]-r.predictions[b]);
   const missing=predictors.filter(id=>r.predictions[id]==null);
+  const kinds=classifyPredictions(r), sc=curScoring();
   const rows=submitted.map((id,i)=>{
     const v=r.predictions[id], s=scores[id]||0;
-    const cls = v===r.result ? 'pita' : (s===1 ? 'near' : 'none');
-    const label = v===r.result ? '🎯 ピタリ！ +3点' : (s===1 ? '📍 ニアピン +1点' : '0点');
+    // ニアピン賞が0点の設定なら、ニアピンの表示もしない
+    const kind = kinds[id]==='near' && sc.near<=0 ? 'none' : kinds[id];
+    const cls = kind==='pita' ? 'pita' : (kind==='near' ? 'near' : 'none');
+    const label = kind==='pita' ? `🎯 ピタリ！ +${s}点` : (kind==='near' ? `📍 ニアピン +${s}点` : '0点');
     return `<div class="pred-row ${cls}" style="animation-delay:${i*0.05}s"><span class="pn">${escapeHtml(pname(id))}</span><span class="pv">${formatValue(v, curMode())}</span><span class="pd">${v===r.result?'':'差 '+Math.abs(v-r.result)}</span><span class="pp">${label}</span></div>`;
   }).concat(missing.map(id=>`<div class="pred-row none"><span class="pn">${escapeHtml(pname(id))}</span><span class="pv">未提出</span><span class="pd"></span><span class="pp">0点</span></div>`)).join('');
   const last=isLastRound();
   return `${qHeaderHTML(r.q)}
     <div class="result-big" style="font-size:34px">結果：${resultText(r)}</div>
+    ${answererBonus(r)?`<div class="bonus-line">🎉 解答者 ${escapeHtml(pname(r.answererId))}さん 全問正解ボーナス +${answererBonus(r)}点</div>`:''}
     <h2>みんなの予想</h2>
     <div class="pred-list">${rows||'<p class="muted">予想した人がいません</p>'}</div>
     <div class="host-actions">
@@ -1777,11 +1845,17 @@ function renderParticipant(){
     case 'reveal_answers':
       root.innerHTML = waitScreen(see, '結果発表中です')+(pl.isAnswerer?'':`<div class="p-center" style="padding-top:0">${myPredLine(pl)}</div>`); break;
     case 'reveal_predictions':
-      if(pl.isAnswerer){ root.innerHTML=waitScreen('解答おつかれさまでした！', '（解答者はこの問題の得点はありません）'); break; }
+      if(pl.isAnswerer){
+        root.innerHTML = pl.fullBonus
+          ? `<div class="p-center"><p>解答おつかれさまでした！</p><div class="p-earned pita">🎉 全問正解ボーナス<br>${pl.earned}点</div><p class="muted" style="font-size:13px">合計点は最後に発表されます</p></div>`
+          : waitScreen('解答おつかれさまでした！', '（解答者はこの問題の得点はありません）');
+        break;
+      }
       {
         const e=pl.earned||0;
-        const cls=e===3?'pita':(e===1?'near':'zero');
-        const label=e===3?'🎯 ピタリ！':(e===1?'📍 ニアピン！':'');
+        const kind = pl.kind==='pita' ? 'pita' : (pl.kind==='near' && e>0 ? 'near' : 'none');
+        const cls=kind==='pita'?'pita':(kind==='near'?'near':'zero');
+        const label=kind==='pita'?'🎯 ピタリ！':(kind==='near'?'📍 ニアピン！':'');
         root.innerHTML=`<div class="p-center"><p>この問題の獲得点</p><div class="p-earned ${cls}">${label?label+'<br>':''}${e}点</div>${myPredLine(pl)||'<p class="muted">予想未提出</p>'}<p class="muted" style="font-size:13px">合計点は最後に発表されます</p></div>`;
       }
       break;
