@@ -63,6 +63,8 @@ textarea{width:100%; font-family:inherit;}
 .q-mode{font-size:12px; color:#fff; border-radius:10px; padding:2px 8px;}
 .q-mode.m-time{background:#2f7de0;} .q-mode.m-count{background:#e0782f;}
 .f-mode-select{font-size:15px; padding:8px;}
+.bgm-current{background:#f7f9ff; border:1px solid #dde2ef; border-radius:8px; padding:10px 12px; margin:6px 0;}
+.bgm-current audio{height:36px; max-width:100%;}
 .csv-box{margin-top:14px; padding:12px; border:1px dashed #b8c2dd; border-radius:8px; background:#f7f9ff;}
 
 /* ---- modal ---- */
@@ -315,6 +317,20 @@ textarea{width:100%; font-family:inherit;}
       <div id="scoring-err" class="confirm-err"></div>
     </section>
     <section class="card">
+      <h2>BGM（45秒タイマー用）</h2>
+      <p class="muted">出題画面で「▶ スタート」を押すと流れます（全問題共通）。ストップで一時停止、リセットで頭に戻り、45秒になったら止まります。<br>
+        音声ファイル（mp3・m4a・wav など）のほか、<strong>mp4 などの動画ファイルも登録できます（流れるのは音声だけで、映像は出ません）</strong>。</p>
+      <div class="row">
+        <input type="file" id="bgm-file-input" accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.ogg,.mp4,.m4v,.webm">
+      </div>
+      <div id="bgm-current" class="bgm-current"></div>
+      <div class="row">
+        <label>音量 <input type="range" id="f-bgm-volume" min="0" max="100" step="5" style="vertical-align:middle"> <span id="f-bgm-volume-val"></span>%</label>
+        <label class="chk" style="font-size:14px"><input type="checkbox" id="f-bgm-loop"> 曲が45秒より短いときは繰り返す</label>
+      </div>
+      <p class="muted" style="font-size:12px">BGMのファイルは選んだ時点でこの端末に保存されます（音量・繰り返しは「保存する」で保存）。JSONの書き出しにもBGMが含まれます。</p>
+    </section>
+    <section class="card">
       <h2>ルール説明</h2>
       <p class="muted">ゲーム開始時にホスト画面に表示されます（空のままならルール説明は飛ばします）。「次へ」を押すごとに段が1つずつ追加表示されます。</p>
       <div id="rule-editor"></div>
@@ -457,9 +473,32 @@ function openDb(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,
 async function idbGet(){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readonly');const rq=tx.objectStore(STORE_NAME).get(DATA_KEY);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>rej(rq.error);});}
 async function idbSet(data){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,DATA_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
 
+/* ---------- BGM（音声・動画ファイル。大きいので appData には入れず、Blob のまま別キーで保存） ---------- */
+const BGM_KEY='bgm';
+async function bgmGet(){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readonly');const rq=tx.objectStore(STORE_NAME).get(BGM_KEY);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>rej(rq.error);});}
+async function bgmSet(rec){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(rec,BGM_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+async function bgmDelete(){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).delete(BGM_KEY);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+function fmtBytes(n){ return n>=1048576 ? (n/1048576).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB'; }
+/** その端末のブラウザで再生できるか（音声として読み込めるか）を確かめ、長さ（秒）を返す */
+function probeAudio(blob){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(blob);
+    const a=new Audio();
+    const done=(ok,val)=>{ clearTimeout(t); a.removeAttribute('src'); a.load(); URL.revokeObjectURL(url); ok?resolve(val):reject(val); };
+    const t=setTimeout(()=>done(false, new Error('timeout')), 15000);
+    a.preload='metadata';
+    a.onloadedmetadata=()=>done(true, a.duration);
+    a.onerror=()=>done(false, new Error('unsupported'));
+    a.src=url;
+  });
+}
+function blobToDataUrl(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(blob); }); }
+async function dataUrlToBlob(dataUrl){ return (await fetch(dataUrl)).blob(); }
+
 /* ---------- data model ---------- */
 function defaultScoring(){return { pita:3, near:1, answererFullBonusOn:true, answererFullBonus:3 };}
-function defaultAppData(){return { title:'ハウメニーアンサー', scoring:defaultScoring(), ruleSlides:[{img:null, groups:['']}], questions:[] };}
+function defaultBgmSettings(){return { volume:80, loop:false };}
+function defaultAppData(){return { title:'ハウメニーアンサー', scoring:defaultScoring(), bgm:defaultBgmSettings(), ruleSlides:[{img:null, groups:['']}], questions:[] };}
 /** 得点設定を正規化（未設定・不正値は初期値） */
 function normalizeScoring(s){
   const d=defaultScoring(); s=Object.assign({}, d, s||{});
@@ -478,6 +517,9 @@ function mergeLoadedAppData(loaded){
   if(!Array.isArray(m.ruleSlides) || !m.ruleSlides.length) m.ruleSlides=d.ruleSlides;
   m.ruleSlides.forEach(s=>{ if(!Array.isArray(s.groups)||!s.groups.length) s.groups=['']; });
   m.scoring=normalizeScoring(m.scoring);
+  m.bgm=Object.assign(defaultBgmSettings(), m.bgm||{});
+  { const v=Number(m.bgm.volume); m.bgm.volume=(v>=0&&v<=100)?Math.round(v):80; m.bgm.loop=!!m.bgm.loop; }
+  delete m.bgmFile;   // JSON書き出しに同梱したBGM本体は、読み込み時に別途保存する
   m.questions=(Array.isArray(m.questions)?m.questions:[]).map(q=>{
     const n=Object.assign(makeQ(), q, {imgs:Array.isArray(q.imgs)?q.imgs:[]});
     n.mode = (q.mode==='time'||q.mode==='count') ? q.mode : legacyMode;
@@ -567,6 +609,18 @@ function initAdmin(){
   };
   ['f-pt-pita','f-pt-near','f-bonus-pt'].forEach(id=>document.getElementById(id).addEventListener('input',onScoring));
   document.getElementById('f-bonus-on').addEventListener('change',onScoring);
+  document.getElementById('bgm-file-input').addEventListener('change', onBgmFileSelected);
+  document.getElementById('f-bgm-volume').addEventListener('input', e=>{
+    appData.bgm.volume=Number(e.target.value);
+    document.getElementById('f-bgm-volume-val').textContent=appData.bgm.volume;
+    const p=document.getElementById('bgm-preview'); if(p) p.volume=appData.bgm.volume/100;
+  });
+  document.getElementById('f-bgm-loop').addEventListener('change', e=>{ appData.bgm.loop=e.target.checked; renderBgmCurrent(); });
+  document.getElementById('bgm-current').addEventListener('click', async e=>{
+    if(!e.target.closest('#btn-bgm-delete')) return;
+    if(!confirm('登録しているBGMを削除しますか？')) return;
+    await bgmDelete(); renderBgmCurrent(); flashMessage('BGMを削除しました');
+  });
   attachRuleSlidesEvents();
   document.getElementById('q-add').addEventListener('click',()=>{
     const last=appData.questions[appData.questions.length-1];
@@ -594,6 +648,10 @@ function refreshAdminUI(){
   document.getElementById('f-bonus-pt').value=appData.scoring.answererFullBonus;
   document.getElementById('f-bonus-pt').disabled=!appData.scoring.answererFullBonusOn;
   document.getElementById('scoring-err').textContent='';
+  document.getElementById('f-bgm-volume').value=appData.bgm.volume;
+  document.getElementById('f-bgm-volume-val').textContent=appData.bgm.volume;
+  document.getElementById('f-bgm-loop').checked=appData.bgm.loop;
+  renderBgmCurrent();
   renderRuleSlidesEditor();
   renderQList();
 }
@@ -605,8 +663,51 @@ async function saveFromAdmin(){
       bad.map(q=>`・${q.genre||'(ジャンル未入力)'}：${questionErrors(q).join(' / ')}`).join('\n'));
   }
 }
-function exportAppData(){
-  const blob = new Blob([JSON.stringify(appData, null, 2)], {type:'application/json'});
+let bgmPreviewUrl=null;
+async function renderBgmCurrent(){
+  const el=document.getElementById('bgm-current'); if(!el) return;
+  if(bgmPreviewUrl){ URL.revokeObjectURL(bgmPreviewUrl); bgmPreviewUrl=null; }
+  let rec=null; try{ rec=await bgmGet(); }catch(e){}
+  if(!rec || !rec.blob){ el.innerHTML='<span class="muted">BGMは登録されていません（スタートを押しても音は鳴りません）</span>'; return; }
+  bgmPreviewUrl=URL.createObjectURL(rec.blob);
+  const isVideo=/^video\//.test(rec.type||'') || /\.(mp4|m4v|webm|mov)$/i.test(rec.name||'');
+  el.innerHTML=`<div>🎵 <strong>${escapeHtml(rec.name||'BGM')}</strong>
+      <span class="muted">（${fmtBytes(rec.size||rec.blob.size)}${rec.duration?`・${Math.round(rec.duration)}秒`:''}${isVideo?'・動画ファイル／音声のみ再生':''}）</span></div>
+    <div class="row">
+      <audio id="bgm-preview" controls preload="metadata" src="${bgmPreviewUrl}"></audio>
+      <button type="button" class="btn-mini" id="btn-bgm-delete">🗑 BGMを削除</button>
+    </div>
+    ${rec.duration && rec.duration<MAX_SEC && !appData.bgm.loop ? `<div class="confirm-err">⚠ 曲が${MAX_SEC}秒より短い（${Math.round(rec.duration)}秒）ので、途中で音が止まります。繰り返したい場合は下の「繰り返す」にチェックしてください。</div>`:''}`;
+  const p=document.getElementById('bgm-preview'); if(p) p.volume=appData.bgm.volume/100;
+}
+async function onBgmFileSelected(e){
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  if(f.size>80*1048576 && !confirm(`ファイルが大きいです（${fmtBytes(f.size)}）。保存やJSON書き出しに時間がかかりますが、登録しますか？\n（動画の場合は音声だけ書き出したファイルにすると軽くなります）`)) return;
+  showSaveOverlay('BGMを確認しています…');
+  let duration=null;
+  try{ duration=await probeAudio(f); }
+  catch(err){ hideSaveOverlay(); alert('このファイルはこのブラウザで再生できません。\nmp3・m4a・wav、または音声がAAC/MP3のmp4にしてください。'); return; }
+  try{
+    setSaveProgress(50,'保存中…');
+    await bgmSet({name:f.name, type:f.type, size:f.size, duration:isFinite(duration)?duration:null, blob:f, updatedAt:Date.now()});
+    setSaveProgress(100,'BGMを保存しました');
+    await new Promise(r=>setTimeout(r,400));
+  } catch(err){ alert('BGMの保存に失敗しました（容量不足の可能性があります）'); }
+  hideSaveOverlay();
+  renderBgmCurrent();
+}
+async function exportAppData(){
+  const out=JSON.parse(JSON.stringify(appData));
+  // BGM本体もJSONに同梱する（別の端末・公開先へそのまま持っていけるように）
+  try{
+    const rec=await bgmGet();
+    if(rec && rec.blob){
+      showSaveOverlay('BGMを書き出し用に変換しています…');
+      out.bgmFile={name:rec.name, type:rec.type, size:rec.size, duration:rec.duration, dataUrl:await blobToDataUrl(rec.blob)};
+      hideSaveOverlay();
+    }
+  }catch(e){ hideSaveOverlay(); }
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -617,7 +718,13 @@ function exportAppData(){
 async function importAppDataFile(e){
   const f = e.target.files[0]; if(!f) return;
   try{
-    appData = mergeLoadedAppData(JSON.parse(await f.text()));
+    const loaded=JSON.parse(await f.text());
+    if(loaded.bgmFile && loaded.bgmFile.dataUrl){
+      const b=loaded.bgmFile;
+      const blob=await dataUrlToBlob(b.dataUrl);
+      await bgmSet({name:b.name, type:b.type||blob.type, size:blob.size, duration:b.duration||null, blob, updatedAt:Date.now()});
+    }
+    appData = mergeLoadedAppData(loaded);
     await persistAppData();
     refreshAdminUI();
     alert('読み込みが完了しました');
@@ -1020,6 +1127,7 @@ async function initHost(){
     e.preventDefault(); handleHostEnter();
   });
   setInterval(tickTimer, 50);
+  loadHostBgm();
   const savedRoom=localStorage.getItem(LS_ROOM);
   const savedStateRaw=localStorage.getItem(LS_STATE);
   if(savedRoom && savedStateRaw){
@@ -1190,6 +1298,40 @@ function finalSteps(){
 function timerElapsed(){ const t=gameState.timer; return Math.min(MAX_MS, t.baseMs + (t.running ? Date.now()-t.startedAt : 0)); }
 function timerDisplayMs(){ const e=timerElapsed(); return curMode()==='time' ? e : MAX_MS-e; }
 function predictRemainingMs(){ const r=gameState.round; return r && r.predictDeadline ? Math.max(0, r.predictDeadline-Date.now()) : PREDICT_MS; }
+/* ---- BGM（ホスト） ---- */
+let bgmAudio=null, bgmName='', bgmFadeHandle=null;
+async function loadHostBgm(){
+  try{
+    const rec=await bgmGet();
+    if(bgmAudio){ bgmAudio.pause(); URL.revokeObjectURL(bgmAudio.src); bgmAudio=null; }
+    bgmName='';
+    if(!rec || !rec.blob) return;
+    // audio要素で再生する：mp4などの動画ファイルでも音声だけが流れる（映像は出さない）
+    bgmAudio=new Audio(URL.createObjectURL(rec.blob));
+    bgmAudio.preload='auto';
+    bgmName=rec.name||'BGM';
+    applyBgmSettings();
+  }catch(e){ console.error(e); }
+}
+function applyBgmSettings(){ if(!bgmAudio) return; bgmAudio.volume=(appData.bgm?appData.bgm.volume:80)/100; bgmAudio.loop=!!(appData.bgm&&appData.bgm.loop); }
+function bgmPlay(fromStart){
+  if(!bgmAudio) return;
+  clearInterval(bgmFadeHandle); applyBgmSettings();
+  if(fromStart) bgmAudio.currentTime=0;
+  const p=bgmAudio.play(); if(p && p.catch) p.catch(err=>{ console.error(err); flashMessage('BGMを再生できませんでした'); });
+}
+function bgmPause(){ if(bgmAudio){ clearInterval(bgmFadeHandle); bgmAudio.pause(); } }
+/** 止めて頭に戻す。fade=true なら0.6秒かけて音を下げてから止める */
+function bgmStop(fade){
+  if(!bgmAudio) return;
+  clearInterval(bgmFadeHandle);
+  if(!fade || bgmAudio.paused){ bgmAudio.pause(); bgmAudio.currentTime=0; applyBgmSettings(); return; }
+  const a=bgmAudio, step=a.volume/12;
+  bgmFadeHandle=setInterval(()=>{
+    a.volume=Math.max(0, a.volume-step);
+    if(a.volume<=0.001){ clearInterval(bgmFadeHandle); a.pause(); a.currentTime=0; applyBgmSettings(); }
+  }, 50);
+}
 function tickTimer(){
   if(!gameState) return;
   if(gameState.phase==='predict'){
@@ -1208,6 +1350,7 @@ function tickTimer(){
     const bar=document.getElementById('timer-bar'); if(bar) bar.style.width=(timerElapsed()/MAX_MS*100)+'%';
     if(gameState.timer.running && timerElapsed()>=MAX_MS){
       gameState.timer.running=false; gameState.timer.baseMs=MAX_MS;
+      bgmStop(true);
       saveGameState(); renderHost();
     }
   }catch(e){ console.error(e); }
@@ -1239,9 +1382,13 @@ const hostActions={
   'redo-pick': (idx)=>{ startRedo(Number(idx)); },
   'toggle-question': ()=>{ const r=gameState.round; r.questionShown=!r.questionShown; saveGameState(); renderHost(); },
   'toggle-count': ()=>{ const r=gameState.round; r.countShown=!r.countShown; saveGameState(); renderHost(); },
-  'timer-start': ()=>{ const t=gameState.timer; if(t.running || timerElapsed()>=MAX_MS) return; t.running=true; t.startedAt=Date.now(); saveGameState(); renderHost(); },
-  'timer-stop': ()=>{ const t=gameState.timer; if(!t.running) return; t.baseMs=timerElapsed(); t.running=false; saveGameState(); renderHost(); },
-  'timer-reset': ()=>{ gameState.timer={running:false, startedAt:0, baseMs:0}; saveGameState(); renderHost(); },
+  'timer-start': ()=>{
+    const t=gameState.timer; if(t.running || timerElapsed()>=MAX_MS) return;
+    bgmPlay(t.baseMs===0);   // 最初からなら頭から、ストップ後の再スタートなら続きから
+    t.running=true; t.startedAt=Date.now(); saveGameState(); renderHost();
+  },
+  'timer-stop': ()=>{ const t=gameState.timer; if(!t.running) return; bgmPause(); t.baseMs=timerElapsed(); t.running=false; saveGameState(); renderHost(); },
+  'timer-reset': ()=>{ bgmStop(false); gameState.timer={running:false, startedAt:0, baseMs:0}; saveGameState(); renderHost(); },
   'toggle-giveup': ()=>{ const r=gameState.round; r.resultGiveUp=!r.resultGiveUp; saveGameState(); renderHost(); },
   'confirm-result': ()=>{ confirmResult(); },
   'show-predictions': ()=>{ gameState.phase='reveal_predictions'; saveGameState(); broadcastStateSync(); renderHost(); },
@@ -1294,6 +1441,7 @@ async function startGame(testMode){
   }
   gameState.testMode=!!testMode;
   gameState.scoring=normalizeScoring(appData.scoring);
+  await loadHostBgm();   // 管理画面でBGMを差し替えていても、開始時点のものを使う
   if(hasRuleContent()){ gameState.phase='rule'; gameState.ruleSlideIndex=0; gameState.ruleRevealIndex=0; }
   else enterLottery();
   saveGameState(); broadcastStateSync(); renderHost();
@@ -1448,6 +1596,8 @@ function renderHostSafe(){
 }
 function renderHost(){
   if(!gameState) return;
+  // 出題画面以外（結果発表・戻る・最初から など）に移ったらBGMは必ず止める
+  if(gameState.phase!=='question' && bgmAudio && !bgmAudio.paused) bgmStop(true);
   const root=document.getElementById('host-root');
   let body='';
   try{
@@ -1689,7 +1839,8 @@ function renderQuestion(){
       <div class="re-err" id="result-err"></div>
       <div class="host-actions" style="margin-top:8px"><button data-action="confirm-result" class="btn-primary">🎉 結果発表へ</button></div>
       <p class="host-note">正解判定は画面外で行い、結果を手入力してください（タイマーの値は結果に使いません）</p>
-    </div>`;
+    </div>
+    <p class="host-note">${bgmAudio?`🎵 BGM：${escapeHtml(bgmName)}（スタートで再生）`:'🔇 BGMは登録されていません（管理画面で登録できます）'}</p>`;
 }
 function resultText(r){
   if(curMode()==='time') return r.result>=MAX_SEC ? `答えきれず…（${MAX_SEC}秒）` : `${r.result}秒で全問正解！`;
