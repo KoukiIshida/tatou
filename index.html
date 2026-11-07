@@ -341,7 +341,7 @@ textarea{width:100%; font-family:inherit;}
     </section>
     <section class="card">
       <h2>問題</h2>
-      <p class="muted">正解は「,」区切りでまとめて登録してください（例：<code>北海道,青森県,岩手県</code>）。正解数と登録した正解の数が一致しないとエラーになります。ジャンル名は重複できません。</p>
+      <p class="muted">正解は「,」区切りでまとめて登録してください（例：<code>北海道,青森県,岩手県</code>）。正解数と登録した正解の数が一致しないとエラーになります。同じ名前のジャンルは登録できますが、「出題する」の中で被る場合と、出題済みの問題と被る場合はエラーになります。</p>
       <div id="q-list"></div>
       <button type="button" id="q-add" class="btn-mini">＋ 問題を追加</button>
       <div class="csv-box">
@@ -355,7 +355,7 @@ textarea{width:100%; font-family:inherit;}
           列：<code>ジャンル, 形式, 問題文, 正解一覧, 正解数, 出題する, ID</code>（1行目は見出し）<br>
           ・形式は「全部」（45秒で全部答えられるか）か「いくつ」（45秒でいくつ答えられるか）<br>
           ・正解一覧は「,」区切りでそのまま1つのセルに入れてください　・出題するは「○」なら出題、空欄なら出題しない<br>
-          ・読み込むと、IDかジャンルが一致する問題は上書き（登録済みの画像は残ります）、それ以外は新しい問題として追加します。CSVから消した問題は、読み込み時に削除するか確認します<br>
+          ・読み込むと、IDが一致する問題は上書き（登録済みの画像は残ります）、それ以外は新しい問題として追加します（IDが空欄の行は、同じジャンル名の問題が1件だけあればその問題を上書き）。CSVから消した問題は、読み込み時に削除するか確認します<br>
           ・新しく追加する行のIDは空欄でOK。問題が0件の状態で書き出すと見出しだけのひな形になります
         </div>
       </div>
@@ -538,7 +538,12 @@ function questionErrors(q){
   const errs=[];
   const genre=(q.genre||'').trim();
   if(!genre) errs.push('ジャンルが未入力です');
-  else if(appData.questions.some(o=>o!==q && (o.genre||'').trim()===genre)) errs.push('同じ名前のジャンルが他にもあります');
+  else if(q.include){
+    // 同じジャンル名は登録してよいが、「出題する」同士で被る／出題済みの問題と被るのはNG
+    const same=appData.questions.filter(o=>o!==q && (o.genre||'').trim()===genre);
+    if(same.some(o=>o.include)) errs.push('「出題する」の中に同じ名前のジャンルがあります');
+    else if(same.some(o=>o.done)) errs.push('同じ名前のジャンルが出題済みです');
+  }
   if(!(q.text||'').trim() && !(q.imgs&&q.imgs.length)) errs.push('問題文が未入力です');
   const answers=parseAnswers(q.answersText);
   const c=Number(q.answerCount);
@@ -796,7 +801,13 @@ async function importCsvFile(e){
   dataRows.forEach(r=>{
     const genre=(get(r,'genre')||'').trim();
     const id=(get(r,'id')||'').trim();
-    let q = (id && appData.questions.find(x=>x.id===id)) || (genre && appData.questions.find(x=>(x.genre||'').trim()===genre));
+    // ID一致を優先。IDが空のときだけジャンル名で探すが、同じジャンル名は複数登録できるので、
+    // 既存の問題でそのジャンル名がちょうど1件（まだこのCSVで更新していない）の場合だけ上書きし、それ以外は新規追加
+    let q = id ? appData.questions.find(x=>x.id===id) : null;
+    if(!q && !id && genre){
+      const cands=before.filter(x=>(x.genre||'').trim()===genre);
+      if(cands.length===1 && !touched.has(cands[0].id)) q=cands[0];
+    }
     if(q) updated++; else { q=makeQ(); appData.questions.push(q); added++; }
     touched.add(q.id);
     q.genre=genre;
@@ -1004,7 +1015,7 @@ function buildQCardHTML(q, idx){
   return `<div class="q-card ${hasErr?'has-error':''}" data-id="${q.id}">
     <div class="q-head" draggable="true">${buildQHeadInnerHTML(q, idx)}</div>
     ${expanded?`<div class="q-detail">
-      <label>ジャンル（ホスト画面の選択肢に出ます。同じ名前は不可）<br><input type="text" class="f-genre" style="width:100%" value="${escapeHtml(q.genre)}" placeholder="例：都道府県①"></label>
+      <label>ジャンル（ホスト画面の選択肢に出ます。「出題する」同士・出題済みとの重複は不可）<br><input type="text" class="f-genre" style="width:100%" value="${escapeHtml(q.genre)}" placeholder="例：都道府県①"></label>
       <label>クイズの形式<br><select class="f-mode-select">
         <option value="time" ${modeOf(q)==='time'?'selected':''}>⏱ ${MODE_LABEL.time}（${MODE_DESC.time}）</option>
         <option value="count" ${modeOf(q)==='count'?'selected':''}>🔢 ${MODE_LABEL.count}（${MODE_DESC.count}）</option>
@@ -1060,8 +1071,9 @@ function attachQuestionListEvents(){
   });
   el.addEventListener('change', e=>{
     const f=findQ(e.target); if(!f) return; const q=f.q;
-    if(e.target.classList.contains('chk-include')){ q.include=e.target.checked; renderConfirm(); }
-    else if(e.target.classList.contains('chk-done')){ q.done=e.target.checked; }
+    // ジャンル重複のエラーは他の問題の「出題する／出題済み」で変わるので、全カードの表示を更新
+    if(e.target.classList.contains('chk-include')){ q.include=e.target.checked; refreshQStatuses(); }
+    else if(e.target.classList.contains('chk-done')){ q.done=e.target.checked; refreshQStatuses(); }
     else if(e.target.classList.contains('f-mode-select')){ q.mode=e.target.value==='count'?'count':'time'; refreshQStatuses(); }
     else if(e.target.classList.contains('f-img-input')){
       const files=Array.from(e.target.files||[]); if(!files.length) return;
