@@ -341,7 +341,7 @@ textarea{width:100%; font-family:inherit;}
     </section>
     <section class="card">
       <h2>問題</h2>
-      <p class="muted">正解は「,」区切りでまとめて登録してください（例：<code>北海道,青森県,岩手県</code>）。正解数と登録した正解の数が一致しないとエラーになります。同じ名前のジャンルは登録できますが、「出題する」の中で被る場合と、出題済みの問題と被る場合はエラーになります。</p>
+      <p class="muted">正解は「,」区切りでまとめて登録してください（例：<code>北海道,青森県,岩手県</code>）。正解数と登録した正解の数が一致しないとエラーになります。同じ名前のジャンルは登録できますが、「出題する」の問題同士で被る場合はエラーになります。</p>
       <div id="q-list"></div>
       <button type="button" id="q-add" class="btn-mini">＋ 問題を追加</button>
       <div class="csv-box">
@@ -539,10 +539,8 @@ function questionErrors(q){
   const genre=(q.genre||'').trim();
   if(!genre) errs.push('ジャンルが未入力です');
   else if(q.include){
-    // 同じジャンル名は登録してよいが、「出題する」同士で被る／出題済みの問題と被るのはNG
-    const same=appData.questions.filter(o=>o!==q && (o.genre||'').trim()===genre);
-    if(same.some(o=>o.include)) errs.push('「出題する」の中に同じ名前のジャンルがあります');
-    else if(same.some(o=>o.done)) errs.push('同じ名前のジャンルが出題済みです');
+    // 同じジャンル名は登録してよいが、「出題する」同士で被るのだけはNG（出題済みの問題と被るのはOK）
+    if(appData.questions.some(o=>o!==q && o.include && (o.genre||'').trim()===genre)) errs.push('「出題する」の中に同じ名前のジャンルがあります');
   }
   if(!(q.text||'').trim() && !(q.imgs&&q.imgs.length)) errs.push('問題文が未入力です');
   const answers=parseAnswers(q.answersText);
@@ -1015,7 +1013,7 @@ function buildQCardHTML(q, idx){
   return `<div class="q-card ${hasErr?'has-error':''}" data-id="${q.id}">
     <div class="q-head" draggable="true">${buildQHeadInnerHTML(q, idx)}</div>
     ${expanded?`<div class="q-detail">
-      <label>ジャンル（ホスト画面の選択肢に出ます。「出題する」同士・出題済みとの重複は不可）<br><input type="text" class="f-genre" style="width:100%" value="${escapeHtml(q.genre)}" placeholder="例：都道府県①"></label>
+      <label>ジャンル（ホスト画面の選択肢に出ます。「出題する」同士の重複は不可）<br><input type="text" class="f-genre" style="width:100%" value="${escapeHtml(q.genre)}" placeholder="例：都道府県①"></label>
       <label>クイズの形式<br><select class="f-mode-select">
         <option value="time" ${modeOf(q)==='time'?'selected':''}>⏱ ${MODE_LABEL.time}（${MODE_DESC.time}）</option>
         <option value="count" ${modeOf(q)==='count'?'selected':''}>🔢 ${MODE_LABEL.count}（${MODE_DESC.count}）</option>
